@@ -98,6 +98,8 @@ if that desktop app is up and running.
   shows what it did.
 - **Composer.** **#** links a channel. On desktop, **!** gives your agents a
   folder and **/** a skill. Attach files by pasting or dragging them in.
+  Text copied with a picture pastes as text; a picture or file copied on its
+  own attaches where uploads are available.
 - **Drafts.** Every message box open on a conversation shares its draft. A box
   you aren't working in follows a draft edited, sent or cleared elsewhere. If
   that could lose your work, **This draft changed elsewhere** offers **Keep my
