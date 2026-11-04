@@ -96,6 +96,8 @@ if that desktop app is up and running.
 - **Messages.** Hover or right-click a message to react, **Reply**, copy a link,
   forward it, or start a chat about it. On an agent's reply, **View activity**
   shows what it did.
+- **Membership changes.** Open “N others” to see the full list of names;
+  choose a name to open that person's profile.
 - **Composer.** **#** links a channel. On desktop, **!** gives your agents a
   folder and **/** a skill. Attach files by pasting or dragging them in.
 - **Chats** are **Ongoing** or **Temporary**, which archive after a while
