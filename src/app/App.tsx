@@ -27,6 +27,7 @@ import { PairingPrompt } from "../features/credential-pairing/PairingPrompt";
 import { Dialog } from "../shared/design-system/ui/Dialog";
 import { UpdateNotice } from "../features/updates/UpdateNotice";
 import { UpdateAction } from "../features/updates/UpdateAction";
+import { ConnectionNotice } from "../features/relay/ConnectionNotice";
 import { PluginUpdates } from "./PluginUpdates";
 import { RejectedLinkNotice } from "../features/navigation/RejectedLinkNotice";
 import { ExternalAuthorizationDialog } from "../features/agents/ExternalAuthorizationDialog";
@@ -833,6 +834,8 @@ function ConnectedAppContent({ services }: { services: AppServices }) {
           }
         >
           <UpdateNotice updates={services.updates} />
+          {/* The one report of a connection that is down or retrying. */}
+          <ConnectionNotice connection={connection} />
           <RejectedLinkNotice links={services.rejectedLinks} />
           <ExternalAuthorizationDialog
             connection={services.externalApps}
@@ -851,7 +854,14 @@ function ConnectedAppContent({ services }: { services: AppServices }) {
             <RecoveryScreen plugins={plugins} />
           ) : !settings &&
             ((!route.state.ingress && route.failure) || failedPage) ? (
-            destinationFailure
+            // A visit that failed only because the connection is down reopens
+            // by itself; the one connection notice reports it, so the page
+            // keeps its loading state instead of a second "Can’t connect".
+            failureKind === "offline" && keepTrying ? (
+              opening
+            ) : (
+              destinationFailure
+            )
           ) : !settings && route.waiting ? (
             opening
           ) : startup === "loading" || restoring ? (
