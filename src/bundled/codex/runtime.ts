@@ -41,6 +41,10 @@ import { threadReference } from "../../features/relay/thread-reference";
 import type { ChannelLabel } from "../../features/channels/channel-icon";
 import { appClient, readFile } from "../../buzz-mcp/app-client";
 import { readProject } from "../../features/agent-harness/project";
+import {
+  referencedFolders,
+  referencedSkills,
+} from "../../features/agent-harness/referenced-folders";
 import { RESUMED_PROMPT } from "../../buzz-mcp/prompt";
 import { MemoryReads } from "../../features/agent-harness/core-memory";
 import { SessionControls } from "../../features/agent-harness/session-control";
@@ -165,6 +169,7 @@ type Active = {
   effort?: string;
   workspace: string;
   signal: AbortSignal;
+  tools: AbortController;
   /** Every request this turn has taken in, the first and each steered one. */
   requests: Request[];
   /** Latest acknowledged mention per Buzz thread; independent of session scope. */
@@ -1620,10 +1625,20 @@ export class CodexRuntime {
     if (wake && !wakeLands(wake, topLevel)) return delivery.ignored?.();
     // Only a Solo chat's Canvas is handed over.
     const canvas = reads.canvas?.bind(reads);
-    const project = solo
-      ? (await readProject(canvas && (() => canvas(channelId, agent.owner))))
-          ?.section
-      : undefined;
+    const [canvasProject, folders] = await Promise.all([
+      solo
+        ? readProject(canvas && (() => canvas(channelId, agent.owner)))
+        : undefined,
+      referencedFolders(event, agent.owner, reads.scope),
+    ]);
+    const project =
+      [
+        canvasProject?.section,
+        folders.section,
+        referencedSkills(event, agent.owner, agent.pubkey),
+      ]
+        .filter(Boolean)
+        .join("\n\n") || undefined;
     // A stop during the reads deleted this agent's entry; recreating it would
     // reopen the agent.
     delivery.signal.throwIfAborted();
@@ -2006,6 +2021,7 @@ export class CodexRuntime {
     if (!active?.requests.includes(request) || active.finished)
       return Promise.resolve();
     active.stopped = true;
+    active.tools.abort(new Error("The owner stopped the turn"));
     active.stopping ??= (async () => {
       try {
         await active.ready;
@@ -2018,7 +2034,10 @@ export class CodexRuntime {
         // A turn that did not stop still reports how it ends, and can be
         // stopped again.
         delete active.stopping;
-        if (!active.finished) active.stopped = false;
+        if (!active.finished) {
+          active.stopped = false;
+          active.tools = new AbortController();
+        }
         throw error;
       }
     })();
@@ -2184,8 +2203,11 @@ export class CodexRuntime {
       !sessionTools(this.added()).some((tool) => tool.name === call.tool)
     )
       throw new Error("No active Buzz tool for this thread and turn");
+    const signal = active
+      ? AbortSignal.any([turn.signal, active.tools.signal])
+      : turn.signal;
     const check = () => {
-      turn.signal.throwIfAborted();
+      signal.throwIfAborted();
       if (turn.finished) throw new Error("The Codex turn has ended");
     };
     check();
@@ -2223,13 +2245,14 @@ export class CodexRuntime {
               this.spawn,
               turn.workspace,
               path,
-              turn.signal,
+              signal,
               agent.protection?.processProtection,
             ),
       check,
-      signal: turn.signal,
+      signal,
+      callSignal: signal,
       memories: async (slug) => {
-        const listing = await this.memories(owner, turn.signal, slug);
+        const listing = await this.memories(owner, signal, slug);
         check();
         return listing;
       },
@@ -2706,6 +2729,7 @@ export class CodexRuntime {
       finished: false,
       workspace: lane.voice?.loaded.workspace ?? request.settings.workspace,
       signal,
+      tools: new AbortController(),
       requests: [request],
       activity: new Map(),
     };

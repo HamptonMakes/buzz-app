@@ -51,6 +51,9 @@ vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
 
 const owner = "a".repeat(64);
 const pubkey = "b".repeat(64);
+/** A 1x1 two-colour GIF without metadata, so attaching it uploads it unchanged. */
+const GIF =
+  "GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;";
 const root = "c".repeat(64);
 const scope = `https://relay.test:${owner}`;
 function deferred<T>() {
@@ -281,11 +284,7 @@ function fixture(
         path: value?.args?.[0] ?? "",
       });
       value?.onStdout?.(
-        btoa(
-          value?.args?.[0] === "attachment.jpg"
-            ? "\xff\xd8\xff"
-            : "FILE CONTENT",
-        ),
+        btoa(value?.args?.[0] === "attachment.gif" ? GIF : "FILE CONTENT"),
       );
       return { ...process, exited: Promise.resolve(0) };
     }
@@ -574,6 +573,7 @@ function fixture(
     args: unknown,
     index = starts().length - 1,
     overrides = {},
+    answerAfter?: Promise<unknown>,
   ) => {
     const threadId = (
       starts()[index]?.params as { threadId: string } | undefined
@@ -593,6 +593,7 @@ function fixture(
         ...overrides,
       },
     });
+    if (answerAfter) await answerAfter;
     await vi.waitFor(
       () =>
         expect(sent.some((wire) => wire.id === id && !wire.method)).toBe(true),
@@ -2102,6 +2103,25 @@ it("ends a turn's input with the notes plugins left for it in its channel", asyn
   expect(notes).toHaveBeenCalledOnce();
   expect(notes).toHaveBeenCalledWith("channel", root);
 });
+it("ends a turn's input with plugins' instructions, once", async () => {
+  const f = fixture();
+  const delivery = f.delivery("@Codex go on");
+  await f.runtime.run({
+    ...delivery,
+    agent: {
+      ...delivery.agent,
+      instructions: () => [{ plugin: "acme.dibs", text: "Run dibs_check." }],
+    },
+  });
+  await vi.waitFor(() => expect(f.starts()).toHaveLength(1));
+  const params = f.starts()[0]?.params as { input: { text: string }[] };
+  const text = params.input[0]?.text ?? "";
+  expect(text.match(/<plugin-instructions /g)).toHaveLength(1);
+  expect(text).toMatch(
+    /<\/buzz-event>\n\n<plugin-instructions plugin="acme\.dibs">\nRun dibs_check\.\n<\/plugin-instructions>/,
+  );
+});
+
 it("hands a turn the notes plugins left while it was being prepared", async () => {
   const f = fixture();
   const delivery = f.delivery("@Codex go on");
@@ -3969,7 +3989,7 @@ it("uses the launched workspace for shared file tools and the owner view for enc
       await f.tool("send", {
         audience: "everyone",
         path: "answer.txt",
-        files: ["attachment.jpg"],
+        files: ["attachment.gif"],
         final: true,
       })
     )?.result,
@@ -3985,10 +4005,10 @@ it("uses the launched workspace for shared file tools and the owner view for enc
     expect(f.runtime.sessions(pubkey)[0]?.status).toBe("Idle"),
   );
   expect(f.fileReads).toEqual([
-    { cwd: "/tmp/codex-test", path: "attachment.jpg" },
+    { cwd: "/tmp/codex-test", path: "attachment.gif" },
     { cwd: "/tmp/codex-test", path: "answer.txt" },
   ]);
-  expect(f.upload).toHaveBeenCalledWith(btoa("\xff\xd8\xff"), "image/jpeg");
+  expect(f.upload).toHaveBeenCalledWith(btoa(GIF), "image/gif");
   expect(f.publish.mock.calls[0]?.[0]).toMatchObject({
     content: expect.stringContaining("FILE CONTENT"),
     tags: expect.arrayContaining([["e", "c".repeat(64), "", "reply"]]),
@@ -4548,11 +4568,17 @@ it.each([false, true])(
       started.resolve();
       return late ? gate.promise : child;
     });
-    const reading = f.tool("send", {
-      audience: "everyone",
-      path: "answer.txt",
-      final: true,
-    });
+    const reading = f.tool(
+      "send",
+      {
+        audience: "everyone",
+        path: "answer.txt",
+        final: true,
+      },
+      undefined,
+      {},
+      gate.promise,
+    );
     await started.promise;
     f.interrupt();
     try {
@@ -4725,6 +4751,98 @@ it("starts a turn with many plugin tools and can call the last tool", async () =
   expect(call).toHaveBeenCalledOnce();
   await f.complete();
 });
+
+it.each(["complete", "stop-external", "stop-publish"])(
+  "keeps an added tool bound to its request across a wait: %s",
+  async (outcome) => {
+    vi.useFakeTimers();
+    const stop = outcome !== "complete";
+    const f = fixture();
+    const entered = deferred<void>();
+    const release = deferred<void>();
+    const signals: AbortSignal[] = [];
+    f.added.push({
+      name: "notes_write",
+      description: "Write a note.",
+      inputSchema: { type: "object" },
+      async call(client, _context, args) {
+        if (args.wait) entered.resolve();
+        if (!client.signal) throw new Error("No request cancellation signal");
+        const signal = client.signal;
+        signals.push(signal);
+        if (args.wait) {
+          await release.promise;
+        }
+        if (outcome !== "stop-publish") signal.throwIfAborted();
+        await client.publish({ kind: 1, content: String(args.text), tags: [] });
+        return "saved";
+      },
+    });
+    const interruptible = vi.fn<NonNullable<Delivery["interruptible"]>>();
+    await f.runtime.run({ ...f.delivery("write"), interruptible });
+    await vi.waitFor(() => expect(f.starts()).toHaveLength(1));
+    f.emit({
+      id: "held-note",
+      method: "item/tool/call",
+      params: {
+        threadId: (f.starts()[0]?.params as { threadId: string } | undefined)
+          ?.threadId,
+        turnId: "turn-1",
+        namespace: "buzz",
+        callId: "held-note",
+        tool: "notes_write",
+        arguments: { wait: true, text: "first" },
+      },
+    });
+    try {
+      await entered.promise;
+      expect(signals[0]?.aborted).toBe(false);
+      if (stop) {
+        const accepted = deferred<void>();
+        f.held.set("turn/interrupt", accepted.promise);
+        const stopping = interruptible.mock.calls[0]?.[0]();
+        try {
+          // Stop fences the callback before the process answers it.
+          expect(signals[0]?.aborted).toBe(true);
+        } finally {
+          accepted.resolve();
+        }
+        await stopping;
+        await vi.waitFor(() =>
+          expect(
+            f.sent.some(
+              (wire) => wire.method === "thread/backgroundTerminals/list",
+            ),
+          ).toBe(true),
+        );
+        await vi.advanceTimersByTimeAsync(1_000);
+        await f.runtime.run(f.delivery("write again"));
+        await vi.waitFor(() => expect(f.starts()).toHaveLength(2));
+        expect(
+          JSON.stringify(await f.tool("notes_write", { text: "next" })),
+        ).toContain("saved");
+        expect(signals[1]?.aborted).toBe(false);
+      }
+    } finally {
+      release.resolve();
+    }
+    await vi.waitFor(() =>
+      expect(
+        f.sent.some((wire) => wire.id === "held-note" && !wire.method),
+      ).toBe(true),
+    );
+    const reply = JSON.stringify(
+      f.sent.find((wire) => wire.id === "held-note" && !wire.method),
+    );
+    expect(reply).toContain(stop ? "The owner stopped the turn" : "saved");
+    expect(
+      f.publish.mock.calls.map(
+        ([event]) => (event as { content: string }).content,
+      ),
+    ).toEqual(stop ? ["next"] : ["first"]);
+    await f.complete(undefined, "");
+  },
+);
 
 it("offers the tools plugins add, runs them as the agent here, and starts a new thread when they change", async () => {
   const f = fixture();
