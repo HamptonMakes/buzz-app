@@ -30,6 +30,7 @@ export type {
   Pages,
 } from "../features/pages/service";
 export type { Backdrop, Backdrops } from "../features/backdrops/service";
+export type { SubjectLift } from "../features/messages/subject-lift";
 export type {
   SidebarRow,
   SidebarRowSortMode,
@@ -46,6 +47,8 @@ export type {
   PluginInstallOutcome,
   PluginInstallSource,
   PluginInstaller,
+  PluginReleaseCandidate,
+  PluginReleaseComparison,
 } from "./installer";
 export type {
   SidebarRestriction,
@@ -59,6 +62,10 @@ export type {
 } from "../features/panels/service";
 export type { Conversation } from "../features/conversation/service";
 export type {
+  ConversationWorkspaceProps,
+  PageTabTarget,
+  PageTabOptions,
+  PageTabsProps,
   ComposerObservation,
   CompletionContext,
   CompletionQuery,
@@ -67,6 +74,11 @@ export type {
   CompletionResult,
   ComposerCompletionProps,
   ComposerCompletion,
+  AnnotationObservation,
+  ComposerAnnotation,
+  ComposerAnnotator,
+  ComposerAnnotatorProps,
+  ComposerReplacement,
   ComposerAccessory,
   ComposerAccessoryProps,
   ComposerResource,
@@ -191,6 +203,7 @@ export type {
   SoloWorkspaces,
   SoloWorkspaceSnapshot,
   SoloWorkspaceProps,
+  SoloChannelGroupProps,
   SoloRegionBinding,
   SoloRegionSnapshot,
   SoloRegionAction,
