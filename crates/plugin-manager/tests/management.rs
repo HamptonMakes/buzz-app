@@ -1327,6 +1327,7 @@ fn retired_notes_reader_can_be_installed_with_old_bundled_settings() {
             r#"{"id":"buzz.relay-notes","name":"Notes reader","apiVersion":1}"#,
         )
         .unwrap();
+        sign(&source);
         let installed = reopened
             .install(&source)
             .unwrap()
@@ -1335,6 +1336,7 @@ fn retired_notes_reader_can_be_installed_with_old_bundled_settings() {
             .find(|p| p.manifest.id == "buzz.relay-notes")
             .unwrap();
         assert_eq!(installed.source, "external");
+        assert!(installed.publisher.is_some());
         assert!(!installed.enabled);
         reopened.change("enable", "buzz.relay-notes").unwrap();
         let again = Manager::open(Some(root.path().into()), "test", false).unwrap();
