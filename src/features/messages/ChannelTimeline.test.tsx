@@ -234,6 +234,8 @@ function setup({
       defaultView: new EventTarget(),
     }),
     focus: vi.fn(),
+    setAttribute: vi.fn(),
+    removeAttribute: vi.fn(),
     getBoundingClientRect: () => ({ top: 0 }),
     querySelector: () => list,
     querySelectorAll: () =>
