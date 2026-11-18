@@ -4324,6 +4324,7 @@ export function createRelaySession(
             timers.delete(timer);
             if (!closed) {
               agentLibrary.reconnect();
+              archives.reconnect();
               activityRosterKey = undefined;
               refreshChannelActivity();
               inboxFeed.reconnect();
