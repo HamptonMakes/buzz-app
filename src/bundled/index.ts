@@ -7,12 +7,10 @@ import draftsSentManifest from "./drafts-sent/manifest.json";
 import * as draftsSent from "./drafts-sent";
 import pairingManifest from "./pairing/manifest.json";
 import * as pairing from "./pairing";
-import todosManifest from "./todos/manifest.json";
 import huddlesManifest from "./huddles/manifest.json";
 import * as huddles from "./huddles";
 import builderlabManifest from "./builderlab/manifest.json";
 import * as builderlab from "./builderlab";
-import * as todos from "./todos";
 import diffsManifest from "./diffs/manifest.json";
 import * as diffs from "./diffs";
 import mermaidManifest from "./mermaid/manifest.json";
@@ -65,6 +63,7 @@ import * as changesets from "./changesets";
 import workflowsManifest from "./workflows/manifest.json";
 import * as workflows from "./workflows";
 import type { BundledPlugin } from "../plugins/manager";
+import { orgPlugins } from "./org";
 import linksManifest from "./links/manifest.json";
 import * as links from "./links";
 import moderationManifest from "./moderation/manifest.json";
@@ -75,6 +74,8 @@ import typesafeManifest from "./typesafe/manifest.json";
 import * as typesafe from "./typesafe";
 import pluginDevelopmentManifest from "./plugin-development/manifest.json";
 import * as pluginDevelopment from "./plugin-development";
+import performanceDiagnosticsManifest from "./performance-diagnostics/manifest.json";
+import * as performanceDiagnostics from "./performance-diagnostics";
 
 const codexHarness: BundledPlugin = {
   manifest: { ...codexManifest, apiVersion: 1 },
@@ -124,11 +125,6 @@ export const bundledPlugins: readonly BundledPlugin[] = [
     manifest: { ...feedbackManifest, apiVersion: 1 },
     module: feedback,
     enabledByDefault: true,
-  },
-  {
-    manifest: { ...todosManifest, apiVersion: 1 },
-    module: todos,
-    enabledByDefault: false,
   },
   {
     manifest: { ...diffsManifest, apiVersion: 1 },
@@ -270,4 +266,11 @@ export const bundledPlugins: readonly BundledPlugin[] = [
     module: pluginDevelopment,
     enabledByDefault: true,
   },
+  {
+    manifest: { ...performanceDiagnosticsManifest, apiVersion: 1 },
+    module: performanceDiagnostics,
+    enabledByDefault: false,
+  },
+  // An organization's own build may bundle plugins here (org.ts).
+  ...orgPlugins,
 ];
