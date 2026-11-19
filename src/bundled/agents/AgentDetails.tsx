@@ -86,7 +86,7 @@ import { PackedAgentAvatar } from "./PackedAgentAvatar";
 import { ProfileBackdrop } from "../../features/profiles/ProfileBackdrop";
 import hero from "../../features/profiles/ProfileHero.module.css";
 import { writeClipboardText } from "../../shared/clipboard";
-import { CopyStatus, useCopyFeedback } from "../../shared/CopyFeedback";
+import { useCopyFeedback } from "../../shared/CopyFeedback";
 import { SettingsSectionLink } from "../../features/navigation/SettingsSectionLink";
 
 export function AgentDetails({
@@ -223,7 +223,7 @@ export function AgentDetails({
         ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
         ?.focus();
   }, [footerVisible]);
-  const { attempted, copied, copy } = useCopyFeedback();
+  const { copied, copy, status } = useCopyFeedback();
   const [editingIdentity, setEditingIdentity] = useState(false);
   const identityMenu = useRef<HTMLButtonElement>(null);
   const [editingName, setEditingName] = useState(false);
@@ -561,7 +561,7 @@ export function AgentDetails({
                               );
                             }}
                           />
-                          {attempted && <CopyStatus copied={copied} />}
+                          {status}
                         </>
                       }
                     />

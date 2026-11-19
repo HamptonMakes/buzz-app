@@ -17,7 +17,7 @@ import { Button } from "../shared/design-system/ui/Button";
 import { PreferenceRow } from "../shared/design-system/ui/PreferenceRow";
 import { useToastNotification } from "../shared/design-system/ui/Toast";
 import { writeClipboardText } from "../shared/clipboard";
-import { CopyLabel, CopyStatus, useCopyFeedback } from "../shared/CopyFeedback";
+import { CopyLabel, useCopyFeedback } from "../shared/CopyFeedback";
 import {
   nativeMediaUsage,
   type NativeMediaUsage,
@@ -44,7 +44,7 @@ export function CommunityLocalSettings({
   viewer: string | undefined;
 }) {
   const notify = useToastNotification();
-  const { attempted, copied, copy } = useCopyFeedback();
+  const { copied, copy, status } = useCopyFeedback();
   const address = communityDestination(community.id).url;
   const [copying, setCopying] = useState(false);
   const [copyError, setCopyError] = useState("");
@@ -208,7 +208,7 @@ export function CommunityLocalSettings({
             >
               <CopyLabel label="Copy URL" copied={copied} />
             </Button>
-            {attempted && <CopyStatus copied={copied} />}
+            {status}
             <Button
               type="button"
               size="xs"
