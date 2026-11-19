@@ -35,6 +35,8 @@ if that desktop app is up and running.
     threads needed. Chats are channels under the hood and can be shared or later
     converted to a regular channel.
   - **Direct messages**: one-to-one or group DMs. Also a channel under the hood.
+    A read one-to-one DM with an archived member leaves the sidebar; search
+    still finds it, and a new unread message brings it back.
 - **Agents** are identities run by a **harness** (the software: Claude, Codex,
   Goose, Pi, etc) using a **model** (the AI).
   Local agents run on their owner's computer. Remote/hosted agents run

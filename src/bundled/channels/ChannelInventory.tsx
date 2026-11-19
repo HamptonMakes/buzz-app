@@ -53,6 +53,7 @@ import type { RelayData } from "../../features/relay/service";
 import type { Agents } from "../../features/agents/service";
 import type { RelaySession } from "../../features/relay/session";
 import { useChannelRoster } from "../../features/relay/react";
+import { useMentionArchives } from "../../features/messages/use-mention-archives";
 import type { Navigation } from "../../features/navigation/controller";
 import type { OpenTarget } from "../../features/navigation/targets";
 import type {
@@ -422,6 +423,8 @@ export function ChannelInventory({
     newMessage(target.route?.params) !== undefined;
   const preparingDm = composingMessage ? handoff?.preparingDm : undefined;
   const regions = useSoloNavigation(queries);
+  const { archived } = useMentionArchives(queries, true);
+  const archivedKeys = useMemo(() => new Set(archived), [archived]);
   const sidebarChannels = useMemo(
     () =>
       channels.filter(
@@ -429,6 +432,13 @@ export function ChannelInventory({
           channel.id !== promotedDm &&
           !channel.huddle &&
           !channel.metadataPending &&
+          // Identity archival changes discovery, never the conversation itself.
+          !(
+            channel.channelType === "dm" &&
+            channel.participants?.length === 1 &&
+            channel.participants[0] !== viewer &&
+            archivedKeys.has(channel.participants[0] ?? "")
+          ) &&
           (channel.channelType !== "solo" ||
             (eligibleSolo(channel, viewer) &&
               !regions.excluded.has(channel.id))) &&
@@ -440,7 +450,7 @@ export function ChannelInventory({
               preparingDm.members.has(member),
             )),
       ),
-    [channels, preparingDm, promotedDm, regions.excluded, viewer],
+    [channels, preparingDm, promotedDm, regions.excluded, viewer, archivedKeys],
   );
   const currentDraft =
     target.kind === "page" && target.pluginId === "buzz.channels"
