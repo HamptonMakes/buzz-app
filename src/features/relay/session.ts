@@ -2742,7 +2742,6 @@ export function createRelaySession(
             const state = archives.queries.snapshot();
             if (
               state.status !== "idle" &&
-              state.status !== "paused" &&
               state.status !== "unavailable" &&
               Date.now() >= (state.retryAt ?? 0)
             )
