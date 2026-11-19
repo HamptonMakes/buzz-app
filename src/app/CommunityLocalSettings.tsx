@@ -17,6 +17,7 @@ import { Button } from "../shared/design-system/ui/Button";
 import { PreferenceRow } from "../shared/design-system/ui/PreferenceRow";
 import { useToastNotification } from "../shared/design-system/ui/Toast";
 import { writeClipboardText } from "../shared/clipboard";
+import { CopyLabel, CopyStatus, useCopyFeedback } from "../shared/CopyFeedback";
 import {
   nativeMediaUsage,
   type NativeMediaUsage,
@@ -43,6 +44,7 @@ export function CommunityLocalSettings({
   viewer: string | undefined;
 }) {
   const notify = useToastNotification();
+  const { attempted, copied, copy } = useCopyFeedback();
   const address = communityDestination(community.id).url;
   const [copying, setCopying] = useState(false);
   const [copyError, setCopyError] = useState("");
@@ -50,14 +52,9 @@ export function CommunityLocalSettings({
     if (copying) return;
     setCopying(true);
     setCopyError("");
-    try {
-      await writeClipboardText(address);
-      notify("Community URL copied.", "success");
-    } catch {
+    if ((await copy(() => writeClipboardText(address))) === "failed")
       setCopyError("Couldn’t copy the URL. Select it and copy manually.");
-    } finally {
-      setCopying(false);
-    }
+    setCopying(false);
   };
   const [usage, setUsage] = useState<NativeMediaUsage>();
   useEffect(() => {
@@ -205,11 +202,13 @@ export function CommunityLocalSettings({
             <Button
               type="button"
               size="xs"
+              aria-label="Copy URL"
               loading={copying}
               onClick={() => void copyUrl()}
             >
-              Copy URL
+              <CopyLabel label="Copy URL" copied={copied} />
             </Button>
+            {attempted && <CopyStatus copied={copied} />}
             <Button
               type="button"
               size="xs"

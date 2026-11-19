@@ -2,7 +2,14 @@
 import "@testing-library/jest-dom/vitest";
 import { useSyncExternalStore } from "react";
 import { Context } from "@deepseek-ai/cordis";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { CommunityLocalSettings } from "./CommunityLocalSettings";
@@ -67,6 +74,7 @@ afterEach(async () => {
   localStorage.clear();
   vi.restoreAllMocks();
   mediaUsage.mockReset();
+  vi.useRealTimers();
 });
 
 it("saves an explicit device name and resets to the default without changing the community address", async () => {
@@ -141,7 +149,9 @@ it("copies the exact community URL, keeps it selectable on clipboard failure, an
   expect(screen.getByLabelText("Community address")).toHaveAttribute(
     "readonly",
   );
-  expect(screen.queryByText("Community URL copied.")).toBeNull();
+  const copy = screen.getByRole("button", { name: "Copy URL" });
+  expect(copy).toHaveTextContent(/^Copy URL$/);
+  expect(screen.getByRole("status")).toBeEmptyDOMElement();
   let finish!: () => void;
   write.mockReturnValueOnce(
     new Promise<void>((resolve) => {
@@ -162,7 +172,11 @@ it("copies the exact community URL, keeps it selectable on clipboard failure, an
       finish();
     });
   }
-  expect(await screen.findByText("Community URL copied.")).toBeVisible();
+  // The button shows the copy itself, under the name it always has.
+  await waitFor(() => expect(copy).toHaveTextContent(/^Copied$/));
+  expect(copy.querySelector(".tabler-icon-check")).not.toBeNull();
+  expect(copy).toHaveAccessibleName("Copy URL");
+  expect(screen.getByRole("status")).toHaveTextContent(/^Copied$/);
   expect(screen.queryByRole("alert")).toBeNull();
   expect(communities.snapshot().selected).toBe(origin);
 });
@@ -221,6 +235,28 @@ it("shows saved image space against the shared limit and measures again after cl
       /Saved images: 0 MB here, 3 MB of 256 MB across communities\./,
     ),
   ).toBeVisible();
+});
+
+it("shows a copied URL in the Copy URL button for 1.5 seconds, with no toast", async () => {
+  await setup();
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: vi.fn().mockResolvedValue(undefined) },
+  });
+  const copy = screen.getByRole("button", { name: "Copy URL" });
+  vi.useFakeTimers();
+  await act(async () => fireEvent.click(copy));
+  expect(copy).toHaveTextContent(/^Copied$/);
+
+  act(() => vi.advanceTimersByTime(1499));
+  expect(copy).toHaveTextContent(/^Copied$/);
+  // The clock a toast mounts on has run: the button and its status are all.
+  expect(screen.getAllByText(/copied/i)).toHaveLength(2);
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+  act(() => vi.advanceTimersByTime(1));
+  expect(copy).toHaveTextContent(/^Copy URL$/);
+  expect(copy.querySelector("svg")).toBeNull();
+  expect(screen.getByRole("status")).toBeEmptyDOMElement();
 });
 
 it("saves the lifetime new Solo chats start with for this community and account only", async () => {
