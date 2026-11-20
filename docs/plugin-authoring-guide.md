@@ -86,6 +86,10 @@ entry has a unique `id`, a `label`, and an `onSelect` callback.
 heading. With `placement: "team-row"`, the channel group uses the native
 Team menu and ignores these entries.
 
+In a Solo channel group, entries follow **View channel details**. An optional
+`icon` supplies decorative artwork and `hint` adds short help on focus or hover.
+The host rechecks the row’s channel membership before calling `onSelect`.
+
 For `ctx.agents.ui.Transcript`, give each turn a unique `turnId` that stays the same across reads. Return a new turn when it changes. Leave previously returned turns and their items untouched.
 
 ## Migration writes
