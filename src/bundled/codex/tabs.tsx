@@ -37,6 +37,13 @@ import { TranscriptPanel } from "../../features/agents/TranscriptPanel";
 import { AgentInstructions } from "../../features/agents/AgentInstructions";
 import { CreateModelChoices } from "../../features/agents/CreateModelChoices";
 import { ModelPicker } from "../../features/agents/ModelPicker";
+import {
+  activeRoute,
+  routeModel,
+  routeOf,
+  useInitialRoute,
+  useModelRoutes,
+} from "../../features/agents/model-routes";
 import { AISettings, runsOnDetails } from "../../features/agents/AISettings";
 import { CompactionField } from "../../features/agents/Compaction";
 import { withCompactAt } from "../../features/agents/compact-at";
@@ -894,6 +901,12 @@ export function createTabs(
         : status?.state === "signed-out" || error === SIGN_IN_ERROR
           ? "login"
           : undefined;
+    useInitialRoute(
+      "codex",
+      !agent && !onRecommended(config),
+      current.model,
+      (model) => onChange(readConfig({ ...current, model, effort: "" })),
+    );
     const ready =
       !step &&
       !checking &&
@@ -943,6 +956,7 @@ export function createTabs(
       <div ref={field} className="contents">
         <CreateModelChoices
           {...props}
+          harness="codex"
           models={choices(data)}
           value={current.model}
           defaultModel={catalogModel(providerDefaults.model, data)?.model ?? ""}
@@ -1010,20 +1024,23 @@ export function createTabs(
       selected,
       data,
     );
+    const routed = Boolean(routeOf(current.model));
     return (
       <Select
         key={current.model || "inherited"}
         label="Thinking"
         valueLabel={
-          current.effort
-            ? undefined
-            : codexDefaultEffortLabel(effective.effort, selected)
+          routed
+            ? "Auto"
+            : current.effort
+              ? undefined
+              : codexDefaultEffortLabel(effective.effort, selected)
         }
-        valueSuffix={current.effort ? undefined : " · Default"}
+        valueSuffix={current.effort || routed ? undefined : " · Default"}
         variant="compact"
         value={current.effort}
         groups={[{ label: "", options: efforts }]}
-        disabled={disabled || checking || !selected}
+        disabled={routed || disabled || checking || !selected}
         onValueChange={(effort) => onChange(readConfig({ ...current, effort }))}
       />
     );
@@ -1592,6 +1609,9 @@ export function createTabs(
     }, [agent.config]);
     // Inert in a build that recommends nothing for Codex.
     const following = onRecommended(draft) && candidatesFor("codex").length > 0;
+    // The route Automatic runs on, while a plugin offers one.
+    useModelRoutes("codex");
+    const automaticRoute = activeRoute("codex", "", true);
     // A remote target runs Recommended on its own default.
     const resolved = bound ? null : provider.recommended();
     const effective = provider.resolve({ ...draft, effort: "" }, !!bound);
@@ -1678,6 +1698,7 @@ export function createTabs(
           </div>
         )}
         <ModelPicker
+          harness="codex"
           allowCustomModel={!!bound}
           models={choices(data)}
           value={draft.model}
@@ -1704,15 +1725,24 @@ export function createTabs(
         <Select
           label="Thinking"
           valueLabel={
-            draft.effort
-              ? undefined
-              : codexDefaultEffortLabel(effective.effort, selected)
+            routeOf(draft.model)
+              ? "Auto"
+              : draft.effort
+                ? undefined
+                : codexDefaultEffortLabel(effective.effort, selected)
           }
-          valueSuffix={draft.effort ? undefined : " · Default"}
+          valueSuffix={
+            draft.effort || routeOf(draft.model) ? undefined : " · Default"
+          }
           variant="preference"
           value={draft.effort}
           groups={[{ label: "", options: efforts }]}
-          disabled={checking || saving || !selected}
+          disabled={
+            Boolean(routeOf(draft.model)) || checking || saving || !selected
+          }
+          {...(routeOf(draft.model) && {
+            description: "Chosen for each conversation's turns",
+          })}
           onValueChange={(effort) =>
             setDraft(offRecommended({ ...draft, effort }))
           }
@@ -1749,6 +1779,7 @@ export function createTabs(
                   {...runsOnDetails(
                     { title: "Codex", icon: CodexLogoIcon },
                     resolved,
+                    automaticRoute,
                   )}
                   onChange={(on) =>
                     // Manual starts from the recommendation it ran on.
@@ -1756,7 +1787,14 @@ export function createTabs(
                       on
                         ? readConfig(withRecommended(draft))
                         : offRecommended(
-                            followRecommended(draft, draft, resolved),
+                            // Or from its Automatic route.
+                            automaticRoute
+                              ? {
+                                  ...draft,
+                                  model: routeModel(automaticRoute.id),
+                                  effort: "",
+                                }
+                              : followRecommended(draft, draft, resolved),
                           ),
                     )
                   }
