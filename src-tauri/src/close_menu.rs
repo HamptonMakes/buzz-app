@@ -2,8 +2,7 @@
 //! Cmd+Shift+W only clears the current channel's tabs.
 //! The red button still closes the window directly.
 //! Edit → Paste and Match Style (Cmd+Shift+V) pastes the clipboard as plain text.
-//! Buzz → Settings… (Cmd+,) runs the app's Open Settings shortcut. As in other
-//! Mac apps its key is fixed, and it works without a focused Buzz page.
+//! Buzz → Settings… (Cmd+,) runs the app's Open Settings shortcut.
 //! Ctrl+Tab bypasses macOS menu highlighting latency. Menu commands and the
 //! native key handler both work while a raw guest webview owns keyboard focus.
 use std::{cell::RefCell, ptr::NonNull};

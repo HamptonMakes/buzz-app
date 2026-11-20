@@ -937,12 +937,12 @@ it("refuses close, quit and Mac Settings chords only in the desktop build", asyn
     for (const key of ["q", "w"]) {
       fireEvent.keyDown(capture(title), { key, metaKey: true });
       expect(screen.getByRole("alert")).toHaveTextContent(
-        `⌘${key.toUpperCase()} is reserved for switching or closing tabs and quitting Buzz. Try another.`,
+        `⌘${key.toUpperCase()} is reserved by Buzz. Try another.`,
       );
     }
     fireEvent.keyDown(capture(title), { key: ",", metaKey: true });
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "⌘, opens Settings from the Buzz menu. Try another.",
+      "⌘, is reserved by Buzz. Try another.",
     );
     expect(h.bindings.snapshot().overrides).toEqual({});
     desktop.unmount();

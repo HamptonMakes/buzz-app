@@ -981,7 +981,8 @@ Quitting Buzz also turns it off.
   lines it lacks. Turn on **Show full content** to read a version as written.
 - **Keyboard shortcuts** follow Slack where they can. Press ⌘/ (Ctrl+/ on
   Windows and Linux) to open **Settings → Shortcuts**, which lists them, lets
-  you change most of them and also shows the fixed message-formatting keys. In
+  you change most of them and also shows the fixed ones, such as message
+  formatting and, in the Mac app, ⌘, and ⌘W. In
   an empty composer, Up selects a message unless **Edit last message with Up Arrow**
   is on. With a message selected, E edits it, R reacts, T or → replies in thread,
   U marks it unread, and Delete deletes your own message.
@@ -991,8 +992,8 @@ Quitting Buzz also turns it off.
   conversations from the relay again, and running agents keep working. ⇧⌘R
   (Ctrl+Shift+R) reloads the whole app, which restarts running agents. If a plugin uses
   the same key as another shortcut, Settings → Shortcuts marks it "Also used
-  by"; change one of them to choose which fires. In the Mac app, ⌘, is fixed
-  to **Buzz → Settings…** and works whenever Buzz is active.
+  by"; change one of them to choose which fires. In the Mac app, **Buzz →
+  Settings…** in the menu bar also opens Settings.
 - **Message width**: choose **Narrow** or **Wide** in **Settings → Appearance →
   Interface**. Narrow is the default; Wide gives messages and the composer
   50% more room when the pane is wide enough. The choice is saved on this device.
