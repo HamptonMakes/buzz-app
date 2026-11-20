@@ -86,6 +86,12 @@ entry has a unique `id`, a `label`, and an `onSelect` callback.
 heading. With `placement: "team-row"`, the channel group uses the native
 Team menu and ignores these entries.
 
+Check `ctx.conversation.workspaceSlots?.headerActions === true` before passing
+`headerActions` to `ui.Workspace`. The host renders those controls in the main
+tab's toolbar, before the three-dot menu; an older host ignores them. Use
+compact icon buttons with an `aria-label` and `title`, and set `aria-pressed`
+or `aria-expanded` on a toggle.
+
 For `ctx.agents.ui.Transcript`, give each turn a unique `turnId` that stays the same across reads. Return a new turn when it changes. Leave previously returned turns and their items untouched.
 
 ## Migration writes
