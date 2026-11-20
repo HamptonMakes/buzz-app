@@ -992,7 +992,9 @@ Quitting Buzz also turns it off.
   (Ctrl+Shift+R) reloads the whole app, which restarts running agents. If a plugin uses
   the same key as another shortcut, Settings → Shortcuts marks it "Also used
   by"; change one of them to choose which fires. In the Mac app, **Buzz →
-  Settings…** in the menu bar also opens Settings.
+  Settings…** (⌘,) in the menu bar also opens Settings. ⌘, works whenever Buzz
+  is the active app, even with the window hidden or a browser pane focused, and
+  can't be changed in Settings → Shortcuts.
 - **Message width**: choose **Narrow** or **Wide** in **Settings → Appearance →
   Interface**. Narrow is the default; Wide gives messages and the composer
   50% more room when the pane is wide enough. The choice is saved on this device.

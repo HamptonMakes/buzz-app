@@ -916,7 +916,7 @@ it("stores Option and Shift chords as the composed key on Apple platforms (known
   }
 });
 
-it("refuses close and quit chords only in the desktop build", async () => {
+it("refuses close, quit and Mac Settings chords only in the desktop build", async () => {
   const user = userEvent.setup();
   const h = await harness();
   try {
@@ -929,7 +929,10 @@ it("refuses close and quit chords only in the desktop build", async () => {
         desktop
       />,
     );
-    const title = "Open Settings";
+    const settings = within(row("Open Settings"));
+    expect(settings.getByText("Reserved by Buzz")).toBeVisible();
+    expect(settings.queryByRole("button")).not.toBeInTheDocument();
+    const title = "Search Buzz";
     await user.click(change(title));
     for (const key of ["q", "w"]) {
       fireEvent.keyDown(capture(title), { key, metaKey: true });
@@ -937,6 +940,10 @@ it("refuses close and quit chords only in the desktop build", async () => {
         `⌘${key.toUpperCase()} is reserved for switching or closing tabs and quitting Buzz. Try another.`,
       );
     }
+    fireEvent.keyDown(capture(title), { key: ",", metaKey: true });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "⌘, opens Settings from the Buzz menu. Try another.",
+    );
     expect(h.bindings.snapshot().overrides).toEqual({});
     desktop.unmount();
     // A browser tab handles these before the page sees them, so nothing is lost.

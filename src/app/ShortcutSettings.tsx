@@ -135,6 +135,8 @@ const DESKTOP_CHORDS: readonly KeyBinding[] = [
   { key: "Tab", mod: true },
   { key: "Tab", mod: true, shift: true },
 ];
+/** The Mac app menu's Buzz → Settings… owns ⌘, so it works without a focused page. */
+const MAC_SETTINGS_CHORD: KeyBinding = { key: ",", mod: true };
 // Common shifted pairs. Aliases for one physical key (⌘= and ⌘+) exist so
 // the chord works on every layout; the row shows that key once.
 const SHIFTED: Readonly<Record<string, string>> = {
@@ -184,11 +186,13 @@ function useShortcutGroups({
   bindings,
   plugins,
   desktop = isTauri(),
+  apple = isApplePlatform(navigator.platform),
 }: {
   shortcuts: ShortcutsService;
   bindings: ShortcutBindings;
   plugins: Pick<PluginManager, "subscribe" | "snapshot">;
   desktop?: boolean;
+  apple?: boolean;
 }) {
   const host = useSyncExternalStore(
     shortcuts.hostSubscribe,
@@ -247,8 +251,10 @@ function useShortcutGroups({
           shortcut,
           "Buzz",
           desktop &&
-            shortcut.binding.some((binding) =>
-              includes(DESKTOP_CHORDS, binding),
+            shortcut.binding.some(
+              (binding) =>
+                includes(DESKTOP_CHORDS, binding) ||
+                (apple && sameBinding(MAC_SETTINGS_CHORD, binding)),
             ),
           shortcut.local,
         ),
@@ -329,7 +335,7 @@ export function ShortcutSettings({
   /** Display names for plugin groups come from the catalog. */
   plugins: Pick<PluginManager, "subscribe" | "snapshot">;
   apple?: boolean;
-  /** Packaged desktop build, where close/quit chords belong to the shell. */
+  /** Packaged desktop build, where close/quit (and on Mac, ⌘,) belong to the shell. */
   desktop?: boolean;
 }) {
   const { overrides, error, rows, shownGroups } = useShortcutGroups({
@@ -337,6 +343,7 @@ export function ShortcutSettings({
     bindings,
     plugins,
     desktop,
+    apple,
   });
   const [editing, setEditing] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -416,6 +423,8 @@ export function ShortcutSettings({
       return refuse(
         `${chord} is reserved for switching or closing tabs and quitting Buzz. Try another.`,
       );
+    if (desktop && apple && sameBinding(MAC_SETTINGS_CHORD, binding))
+      return refuse(`${chord} opens Settings from the Buzz menu. Try another.`);
     const conflict = rows.find(
       (row) =>
         competes(target, row) &&
