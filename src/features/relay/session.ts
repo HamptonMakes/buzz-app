@@ -2759,7 +2759,7 @@ export function createRelaySession(
               state.status !== "unavailable" &&
               Date.now() >= (state.retryAt ?? 0)
             )
-              void archives.queries.refresh();
+              void archives.retry();
           },
         ),
         recoverable(
