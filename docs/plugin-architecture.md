@@ -3003,10 +3003,11 @@ leaving time for Channels to reveal the message before the visit expires.
 Honor the signal when the visit, reader selection or session changes, the page
 is removed, or the budget ends. If root evidence is slow or no page supplies a
 valid route, Buzz reveals the message in Channels. The visit keeps the original
-link address. Returning to it from Settings or through Back or Forward checks
-access and resolves the message again. The workspace keeps its local state if
-the same covered page and route return. The page still owns access to its own
-domain data.
+link address. Back and Forward check access and resolve the message again.
+Returning from Settings resumes an ordinary Channels visit. If Settings covered
+a contributed destination, Buzz checks its link again and keeps the workspace's
+local state if the same page and route return. The page still owns access to its
+own domain data.
 
 Browser `#buzz=` addresses and session history support reload and Back/Forward.
 Messages recognize the Buzz link forms `buzz://channel/<id>`,

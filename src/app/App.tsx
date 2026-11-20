@@ -1009,7 +1009,9 @@ function ConnectedAppContent({ services }: { services: AppServices }) {
             const returning =
               services.navigation.snapshot().entry.id ===
               settingsReturnEntry.current;
-            const previous = settingsOpeningFocus.current;
+            const previous = parkedKey
+              ? settingsOpeningFocus.current
+              : settingsFocus.current;
             if (
               returning &&
               previous?.isConnected &&
