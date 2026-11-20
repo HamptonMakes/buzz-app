@@ -135,7 +135,9 @@ const DESKTOP_CHORDS: readonly KeyBinding[] = [
   { key: "Tab", mod: true },
   { key: "Tab", mod: true, shift: true },
 ];
-const MAC_DESKTOP_CHORDS = [...DESKTOP_CHORDS, { key: ",", mod: true }];
+/** The Mac menu's Settings… accelerator fires whenever the page doesn't take ⌘,. */
+const MAC_MENU_CHORDS: readonly KeyBinding[] = [{ key: ",", mod: true }];
+const MAC_DESKTOP_CHORDS = [...DESKTOP_CHORDS, ...MAC_MENU_CHORDS];
 // Common shifted pairs. Aliases for one physical key (⌘= and ⌘+) exist so
 // the chord works on every layout; the row shows that key once.
 const SHIFTED: Readonly<Record<string, string>> = {
@@ -223,6 +225,8 @@ function useShortcutGroups({
     owner: string,
     readOnly = false,
     local = false,
+    /** Native chords that keep working beside an override. */
+    fixed: readonly KeyBinding[] = [],
   ): Row => {
     const override = overrides[key];
     return {
@@ -234,7 +238,7 @@ function useShortcutGroups({
       local,
       defaults: shortcut.binding,
       override,
-      effective: override ? [override] : shortcut.binding,
+      effective: override ? [...fixed, override] : shortcut.binding,
     };
   };
   // Group ids are namespaced so a plugin whose manifest id is "buzz" or "host"
@@ -254,6 +258,11 @@ function useShortcutGroups({
               includes(apple ? MAC_DESKTOP_CHORDS : DESKTOP_CHORDS, binding),
             ),
           shortcut.local,
+          desktop && apple
+            ? shortcut.binding.filter((binding) =>
+                includes(MAC_MENU_CHORDS, binding),
+              )
+            : [],
         ),
       ),
     },
@@ -621,12 +630,11 @@ function ShortcutRow({
           </h4>
         }
         subtitle={
-          row.readOnly ? (
-            explained ? undefined : (
-              "Reserved by Buzz"
-            )
-          ) : row.override || sharedWith.length > 0 ? (
+          row.readOnly && explained ? undefined : row.readOnly ||
+            row.override ||
+            sharedWith.length > 0 ? (
             <>
+              {row.readOnly && <span className="block">Reserved by Buzz</span>}
               {row.override && <span className="block">Modified</span>}
               {sharedWith.length > 0 && (
                 <span className="block text-subtle">

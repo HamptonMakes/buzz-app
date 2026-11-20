@@ -916,6 +916,42 @@ it("stores Option and Shift chords as the composed key on Apple platforms (known
   }
 });
 
+it("keeps the Mac menu's ⌘, beside a saved Open Settings override", async () => {
+  const h = await harness();
+  try {
+    // Saved before ⌘, became the menu's: Open Settings moved off it, Search took it.
+    h.bindings.set("settings", { key: ";", mod: true });
+    h.bindings.set("global-search", { key: ",", mod: true });
+    render(
+      <ShortcutSettings
+        shortcuts={h.shortcuts}
+        bindings={h.bindings}
+        plugins={h.plugins}
+        apple
+        desktop
+      />,
+    );
+    const settings = within(row("Open Settings"));
+    expect(settings.getByText("Reserved by Buzz")).toBeVisible();
+    expect(settings.getByText("Modified")).toBeVisible();
+    expect(settings.getByText("Command ,")).toBeInTheDocument();
+    expect(settings.getByText("Command ;")).toBeInTheDocument();
+    expect(
+      settings.getByText("Also used by Search Buzz (Buzz)"),
+    ).toBeInTheDocument();
+    expect(
+      settings.getByRole("button", {
+        name: "Reset shortcut for Open Settings",
+      }),
+    ).toBeVisible();
+    expect(
+      within(row("Search Buzz")).getByText("Also used by Open Settings (Buzz)"),
+    ).toBeInTheDocument();
+  } finally {
+    await h.dispose();
+  }
+});
+
 it("refuses close, quit and Mac Settings chords only in the desktop build", async () => {
   const user = userEvent.setup();
   const h = await harness();
