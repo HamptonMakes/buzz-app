@@ -68,7 +68,7 @@ if that desktop app is up and running.
   - **Community admin**: **Membership** for owners and admins.
   - **Buzz**: **Identity**, **Security** (desktop only), **Appearance**,
     **Notifications**, **Shortcuts**, **Agent setup**, **Decisions API**,
-    **External apps** and **Software updates**.
+    **Speech to text**, **External apps** and **Software updates**.
   - **Plugins**: **Manage plugins**, plus each plugin's own page (Builderlab,
     Attention, Claude, GitHub, Focus and so on).
 
