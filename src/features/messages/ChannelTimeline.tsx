@@ -1216,6 +1216,12 @@ function Timeline({
       )
         return;
       const previous = measuredPosition.current;
+      // A new width or viewport rewraps rows and moves the range's end; the
+      // offset it leaves is the layout's, not the reader's.
+      const resized =
+        !!previous &&
+        (edge.current?.clientWidth !== previous.width ||
+          element.clientHeight !== previous.viewport);
       // Reflow can move the offset twice: the browser clamps a shrinking list,
       // then Virtua corrects its measured rows. That combined movement can exceed
       // the height delta, so a contracting list is not evidence of reader input.
@@ -1228,8 +1234,7 @@ function Timeline({
         previous &&
         (upwardGesture.current ||
           (!layoutOwned &&
-            edge.current?.clientWidth === previous.width &&
-            element.clientHeight === previous.viewport &&
+            !resized &&
             element.scrollHeight >= previous.height)) &&
         element.scrollTop < previous.offset;
       // One smooth key scroll or scrollbar drag can cross several frames.
@@ -1237,10 +1242,11 @@ function Timeline({
       // when its first event has not left the near-bottom threshold yet.
       if (movedUp) upwardGesture.current = "moving";
       // Past the latest message, the reader reads the trailing content: new
-      // rows no longer move them. A follower the timeline moved there still
-      // follows; its own alignment brings them back.
+      // rows no longer move them. A follower the timeline or a resize moved
+      // there still follows; its own alignment brings them back.
       const inTrailing =
-        pastLatest(element, extra) && !(layoutOwned && follow.current);
+        pastLatest(element, extra) &&
+        !((layoutOwned || resized) && follow.current);
       if (
         follow.current &&
         !movedUp &&

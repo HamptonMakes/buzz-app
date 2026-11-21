@@ -290,6 +290,27 @@ test.describe("trailing content", () => {
     await expect(toggle(region)).toHaveText("Full brief");
   });
 
+  test("a resize at rest keeps the reader at rest", async ({ page, app }) => {
+    await open(page, app);
+    const region = history(page);
+    await select(page, { channelId: "alpha", trailing: "short" });
+    await expect(toggle(region)).toHaveText("Full brief");
+    await settle(page, region);
+    expect(Math.abs((await place(region)).past)).toBeLessThanOrEqual(1);
+    // Rows rewrap both ways, and widening shortens the range under the reader.
+    for (const width of [900, 1200]) {
+      await page.setViewportSize({ width, height: 650 });
+      await settle(page, region);
+      const rest = await place(region);
+      expect(
+        Math.abs(rest.past),
+        `at rest after resizing to ${width}`,
+      ).toBeLessThanOrEqual(1);
+      expect(rest.latestGap).toBeGreaterThanOrEqual(-1);
+      await expect(toggle(region)).toHaveText("Full brief");
+    }
+  });
+
   test("removing a grown card leaves no expanded state behind", async ({
     page,
     app,
