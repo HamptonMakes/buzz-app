@@ -218,8 +218,10 @@
     animation-name: schematic-enter-3;
   }
 
-  /* A still scene never loops: no fade in or out. */
+  /* A still scene never loops and has nothing to grow into, so it sits
+     centred with even space above and below. */
   .buzz-schematic-scene[data-still] .buzz-schematic-stage {
+    align-content: center;
     animation: none;
   }
 
