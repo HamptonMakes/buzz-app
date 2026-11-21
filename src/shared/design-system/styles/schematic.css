@@ -16,6 +16,8 @@
     --schematic-delay: 0s;
     --schematic-state: running;
     display: grid;
+    /* Even space above and below the drawing. */
+    align-content: center;
     aspect-ratio: 16 / 9;
     overflow: hidden;
     border-radius: var(--floating-inner-radius, var(--radius-container));
@@ -24,6 +26,11 @@
     padding-inline: var(--space-16);
     pointer-events: none;
     user-select: none;
+  }
+  /* A card that grows downward stays anchored at the top, so its header
+     does not drift up as rows reveal. */
+  .buzz-schematic-scene:has([data-motion="grow"], [data-motion="expand"]) {
+    align-content: start;
   }
   .buzz-schematic-stage {
     display: grid;
@@ -218,10 +225,8 @@
     animation-name: schematic-enter-3;
   }
 
-  /* A still scene never loops and has nothing to grow into, so it sits
-     centred with even space above and below. */
+  /* A still scene never loops. */
   .buzz-schematic-scene[data-still] .buzz-schematic-stage {
-    align-content: center;
     animation: none;
   }
 
