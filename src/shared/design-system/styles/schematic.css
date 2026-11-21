@@ -176,6 +176,15 @@
       var(--schematic-delay) infinite both var(--schematic-state);
   }
 
+  /* Double-clicking does not move the hand: it holds its place while the
+     handle travels down beneath it, on the expand's own timing. */
+  .buzz-schematic-slot[data-motion="expand"]
+    .buzz-schematic-grip
+    .buzz-schematic-pointer {
+    animation-name: schematic-double-tap, schematic-hold;
+    animation-timing-function: var(--ease-state), var(--ease-settle);
+  }
+
   /* Card motions. */
   .buzz-schematic-slot[data-motion="grow"] .buzz-schematic-rows {
     animation: schematic-grow var(--schematic-loop) var(--ease-settle)
@@ -325,6 +334,19 @@
         var(--schematic-unit) *
         var(--schematic-total) -
         var(--schematic-gap)
+      );
+    }
+  }
+  @keyframes schematic-hold {
+    0%,
+    26% {
+      margin-block-start: 0;
+    }
+    48%,
+    100% {
+      margin-block-start: calc(
+        var(--schematic-unit) *
+        (var(--schematic-visible) - var(--schematic-total))
       );
     }
   }
