@@ -2223,6 +2223,11 @@ export const ELEVATION = [
     variable: "--shadow-sm",
     use: "Ordinary elevation for bordered dialogs, tooltips, and raised controls.",
   },
+  {
+    token: "shadow-overlay",
+    variable: "--shadow-overlay",
+    use: "A surface floating over the whole app, such as a tour: a deep ambient shadow in light mode; the quiet light rim in dark mode.",
+  },
 ];
 
 export const BLUR = [

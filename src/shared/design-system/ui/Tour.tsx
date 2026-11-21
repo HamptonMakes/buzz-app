@@ -100,6 +100,7 @@ export function Tour({
         align={align}
         sideOffset={sideOffset}
         alignOffset={alignOffset}
+        elevation="overlay"
         initialFocus={false}
         finalFocus={false}
         role="dialog"

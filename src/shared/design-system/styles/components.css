@@ -2808,6 +2808,9 @@
     padding: var(--space-3);
     color: var(--text-standard);
   }
+  .buzz-popover-popup[data-elevation="overlay"] {
+    box-shadow: var(--shadow-overlay);
+  }
   .buzz-popover-popup[data-size="compact"] {
     width: 14rem;
   }
