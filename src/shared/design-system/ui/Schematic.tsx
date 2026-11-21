@@ -10,9 +10,21 @@ import { HandGrabIcon, HandStopIcon, PointerIcon } from "../icons/index";
 
 type Vars = CSSProperties & Record<`--${string}`, string | number>;
 
-export function SchematicScene({ children }: { children: ReactNode }) {
+export function SchematicScene({
+  children,
+  still = false,
+}: {
+  children: ReactNode;
+  /** Hold a single frame instead of looping, for a scene that only sets context. */
+  still?: boolean;
+}) {
   return (
-    <div data-buzz-ui="" className="buzz-schematic-scene" aria-hidden="true">
+    <div
+      data-buzz-ui=""
+      className="buzz-schematic-scene"
+      data-still={still ? "" : undefined}
+      aria-hidden="true"
+    >
       <div className="buzz-schematic-stage">{children}</div>
     </div>
   );

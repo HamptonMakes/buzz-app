@@ -28,7 +28,7 @@ export const sidebarTourPages: readonly TourPage[] = [
     description:
       "Your conversations now live in workspaces you arrange. Here’s a quick look.",
     visual: (
-      <SchematicScene>
+      <SchematicScene still>
         <SchematicCard>
           <SchematicRow lead="channel" />
           <SchematicRow lead="person" tone="accent" />

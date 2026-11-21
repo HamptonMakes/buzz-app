@@ -218,6 +218,11 @@
     animation-name: schematic-enter-3;
   }
 
+  /* A still scene never loops: no fade in or out. */
+  .buzz-schematic-scene[data-still] .buzz-schematic-stage {
+    animation: none;
+  }
+
   /* Reduced motion holds the finished frame of every part. */
   @media (prefers-reduced-motion: reduce) {
     .buzz-schematic-scene {
