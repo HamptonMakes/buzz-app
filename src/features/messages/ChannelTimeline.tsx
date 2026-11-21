@@ -1040,6 +1040,9 @@ function Timeline({
   // scrolled there: at its end (Full), or this far past the latest message.
   // Changes to the content, the viewport or the rows keep that place.
   const trailingPlace = useRef<{ full: boolean; offset: number }>(undefined);
+  // How far above the latest message a follower last scrolled: within the
+  // follow threshold, layout keeps that gap rather than undoing the scroll.
+  const followGap = useRef(0);
   const [trailingExpanded, setTrailingExpanded] = useState(false);
   const restHeight = trailing?.restHeight ?? 0;
   const latestRest = useRef(restHeight);
@@ -1051,6 +1054,9 @@ function Timeline({
   }, [restHeight]);
   const trackTrailing = (element: HTMLElement) => {
     const extra = trailingExtra.current;
+    followGap.current = follow.current
+      ? Math.max(0, latestTop(element, extra) - element.scrollTop)
+      : 0;
     trailingPlace.current =
       !follow.current && pastLatest(element, extra)
         ? {
@@ -1105,7 +1111,7 @@ function Timeline({
         : place
           ? top + Math.min(Math.max(place.offset, 0), extra)
           : settled.current && follow.current
-            ? top
+            ? top - followGap.current
             : undefined;
       if (next === undefined || Math.abs(next - element.scrollTop) < 1) return;
       layoutCorrection.current = true;

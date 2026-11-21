@@ -311,6 +311,36 @@ test.describe("trailing content", () => {
     }
   });
 
+  test("a growing card keeps a follower's small scroll above the latest message", async ({
+    page,
+    app,
+  }) => {
+    await open(page, app);
+    const region = history(page);
+    await select(page, { channelId: "alpha", trailing: "long" });
+    await expect(toggle(region)).toHaveText("Full brief");
+    await settle(page, region);
+    expect(Math.abs((await place(region)).past)).toBeLessThanOrEqual(1);
+    // Within the follow threshold the reader still follows the latest message.
+    await region.hover();
+    await wheel(page, -40, region);
+    await settle(page, region);
+    const above = await place(region);
+    expect(above.past).toBeLessThanOrEqual(-39);
+    // The card grows below the fold: the latest message stays where it is,
+    // so the follower's realignment keeps their scroll.
+    await region
+      .getByRole("article", { name: "Fixture card" })
+      .evaluate((card) => {
+        card.style.paddingBottom = "120px";
+      });
+    await expect
+      .poll(async () => (await place(region)).extra)
+      .toBeGreaterThan(above.extra);
+    await settle(page, region);
+    expect((await place(region)).past).toBeCloseTo(above.past, 0);
+  });
+
   test("removing a grown card leaves no expanded state behind", async ({
     page,
     app,
