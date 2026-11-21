@@ -4,6 +4,11 @@
     position: relative;
     display: grid;
     gap: var(--space-3);
+    cursor: grab;
+    user-select: none;
+  }
+  .buzz-tour:active {
+    cursor: grabbing;
   }
   .buzz-tour-visual {
     display: grid;

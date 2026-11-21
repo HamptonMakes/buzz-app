@@ -1,5 +1,12 @@
 import type { PopoverRoot as BasePopoverRoot } from "@base-ui/react/popover";
-import { useId, useState, type ComponentProps, type ReactNode } from "react";
+import {
+  useId,
+  useRef,
+  useState,
+  type ComponentProps,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 import { XIcon } from "../icons/index";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
@@ -33,7 +40,8 @@ type TourProps = {
 /**
  * A short paged introduction that floats beside the feature it explains. It
  * never takes focus on its own or closes on an outside click, so work can
- * continue around it; Escape and the close button dismiss it.
+ * continue around it; Escape and the close button dismiss it. It opens at its
+ * anchor, and the person can drag it by any spot that is not a control.
  */
 export function Tour({
   open,
@@ -48,6 +56,26 @@ export function Tour({
 }: TourProps) {
   const [index, setIndex] = useState(0);
   const labelId = useId();
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ id: number; x: number; y: number } | null>(null);
+  const grab = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    if ((event.target as Element).closest("button, a, input")) return;
+    drag.current = {
+      id: event.pointerId,
+      x: event.clientX - offset.x,
+      y: event.clientY - offset.y,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const move = (event: PointerEvent<HTMLDivElement>) => {
+    const start = drag.current;
+    if (!start || start.id !== event.pointerId) return;
+    setOffset({ x: event.clientX - start.x, y: event.clientY - start.y });
+  };
+  const release = (event: PointerEvent<HTMLDivElement>) => {
+    if (drag.current?.id === event.pointerId) drag.current = null;
+  };
   const page = pages[Math.min(index, pages.length - 1)];
   if (!page) return null;
   const last = index >= pages.length - 1;
@@ -76,6 +104,11 @@ export function Tour({
         finalFocus={false}
         role="dialog"
         aria-labelledby={labelId}
+        style={{ translate: `${offset.x}px ${offset.y}px` }}
+        onPointerDown={grab}
+        onPointerMove={move}
+        onPointerUp={release}
+        onPointerCancel={release}
         onKeyDown={(event) => {
           if (event.key === "ArrowRight") go(index + 1);
           if (event.key === "ArrowLeft") go(index - 1);
