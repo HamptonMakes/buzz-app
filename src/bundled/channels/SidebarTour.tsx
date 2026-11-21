@@ -23,6 +23,25 @@ export const sidebarTourEdition = "workspaces-1";
 
 export const sidebarTourPages: readonly TourPage[] = [
   {
+    id: "welcome",
+    title: "Meet the new sidebar",
+    description:
+      "Your conversations now live in workspaces you arrange. Here’s a quick look.",
+    visual: (
+      <SchematicScene>
+        <SchematicCard>
+          <SchematicRow lead="channel" />
+          <SchematicRow lead="person" tone="accent" />
+          <SchematicRow lead="chat" />
+        </SchematicCard>
+        <SchematicCard>
+          <SchematicRow lead="chat" />
+          <SchematicRow lead="channel" />
+        </SchematicCard>
+      </SchematicScene>
+    ),
+  },
+  {
     id: "anything",
     title: "Workspaces hold anything",
     description: "Put chats, channels and DMs together in any workspace.",

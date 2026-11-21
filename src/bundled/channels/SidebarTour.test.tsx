@@ -11,7 +11,7 @@ import {
   sidebarTourPages,
 } from "./SidebarTour";
 
-const firstTitle = "Workspaces hold anything";
+const firstTitle = "Meet the new sidebar";
 
 beforeEach(() => localStorage.clear());
 afterEach(cleanup);
@@ -28,7 +28,7 @@ function mount(ready = true) {
   return render(<SidebarTour listRef={listRef} ready={ready} />);
 }
 
-test("sidebar tour waits for the layout, then shows its four pages in order", async () => {
+test("sidebar tour waits for the layout, then shows its pages in order", async () => {
   const user = userEvent.setup();
   const view = mount(false);
   expect(screen.queryByText(firstTitle)).toBeNull();
