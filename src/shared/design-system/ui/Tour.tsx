@@ -119,7 +119,9 @@ export function Tour({
           <span id={labelId} className="sr-only">
             {label}
           </span>
-          <div className="buzz-tour-visual" aria-hidden="true">
+          {/* A fresh scene per page restarts its loop, so the fade stays in
+              step with the motion instead of carrying over mid-loop. */}
+          <div key={page.id} className="buzz-tour-visual" aria-hidden="true">
             {page.visual}
           </div>
           <span className="buzz-tour-close">
