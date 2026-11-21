@@ -43,6 +43,7 @@ type CardMotion =
 export function SchematicCard({
   header,
   children,
+  grip,
   footer,
   visibleRows,
   motion,
@@ -52,7 +53,9 @@ export function SchematicCard({
   header?: ReactNode;
   /** SchematicRow parts. */
   children?: ReactNode;
-  /** Shown beneath the card, such as a SchematicGrip. */
+  /** The resize handle along the card's bottom edge, inside it as in the app. */
+  grip?: ReactNode;
+  /** Shown beneath the card, outside it, such as a SchematicDropLine. */
   footer?: ReactNode;
   /** Rows showing before the motion; the rest reveal as it plays. */
   visibleRows?: number;
@@ -74,6 +77,7 @@ export function SchematicCard({
           {header}
         </div>
         {total > 0 && <div className="buzz-schematic-rows">{children}</div>}
+        {grip}
       </div>
       {footer}
     </div>
@@ -100,7 +104,7 @@ export function SchematicRow({
   );
 }
 
-/** The resize handle beneath a card. */
+/** The resize handle along the bottom edge inside a card. */
 export function SchematicGrip({
   tone = "neutral",
   children,

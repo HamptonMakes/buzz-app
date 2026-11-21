@@ -66,7 +66,7 @@ export const sidebarTourPages: readonly TourPage[] = [
         <SchematicCard
           visibleRows={2}
           motion="grow"
-          footer={
+          grip={
             <SchematicGrip tone="accent">
               <SchematicPointer motion="drag" />
             </SchematicGrip>
@@ -90,7 +90,7 @@ export const sidebarTourPages: readonly TourPage[] = [
         <SchematicCard
           visibleRows={2}
           motion="expand"
-          footer={
+          grip={
             <SchematicGrip tone="accent">
               <SchematicPointer motion="double-tap" />
             </SchematicGrip>

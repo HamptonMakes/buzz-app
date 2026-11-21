@@ -2362,7 +2362,7 @@ function ResizeScene() {
       <SchematicCard
         visibleRows={2}
         motion="grow"
-        footer={
+        grip={
           <SchematicGrip tone="accent">
             <SchematicPointer motion="drag" />
           </SchematicGrip>
@@ -2384,7 +2384,7 @@ function SchematicSpecimen() {
   <SchematicCard
     visibleRows={2}
     motion="grow"
-    footer={
+    grip={
       <SchematicGrip tone="accent">
         <SchematicPointer motion="drag" />
       </SchematicGrip>
