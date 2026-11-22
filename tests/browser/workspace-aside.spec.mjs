@@ -235,13 +235,23 @@ test("adding and removing the aside keeps the reader at the latest message", asy
   const region = history(page);
   await settle(page, region);
   expect(Math.abs(await past(region))).toBeLessThanOrEqual(1);
-  await openAside(page);
+  // The same scroller stays mounted throughout.
+  await region.evaluate((element) => {
+    window.asideScroller = element;
+  });
+  const same = () =>
+    region.evaluate((element) => element === window.asideScroller);
+  // As a plugin does when its content arrives, without a navigation.
+  await page.evaluate(() => window.fixtureAside("tall"));
+  await expect(aside(page)).toBeVisible();
   await settle(page, region);
   expect(Math.abs(await past(region))).toBeLessThanOrEqual(1);
-  await openReader(page, {});
+  expect(await same()).toBe(true);
+  await page.evaluate(() => window.fixtureAside(null));
   await expect(aside(page)).toHaveCount(0);
   await settle(page, region);
   expect(Math.abs(await past(region))).toBeLessThanOrEqual(1);
+  expect(await same()).toBe(true);
   expect(
     await region.evaluate((element) => [
       element.hasAttribute("data-aside-docked"),
@@ -330,4 +340,82 @@ test("a live resize beside an aside keeps the reader at rest", async ({
       `at rest after resizing to ${to}`,
     ).toBeLessThanOrEqual(1);
   }
+});
+
+test.describe("beside a narrow dock", () => {
+  test.use({
+    readState: true,
+    threadUnread: true,
+    historyCounts: { alpha: 40, beta: 3 },
+    viewport: { width: 600, height: 800 },
+  });
+
+  test("a narrow dock covers the aside", async ({ page, app }) => {
+    await open(page, app);
+    await openAside(page);
+    const region = history(page);
+    await settle(page, region);
+    const button = aside(page).getByRole("button", { name: "Show dashboard" });
+    await expect(button).toBeVisible();
+    const box = await button.boundingBox();
+    const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const root = app.histories
+      .get("primary/alpha")
+      .find((row) => row.content === "Thread root 1");
+    const row = region.locator(`[data-message-id="${root.id}"]`);
+    await row.scrollIntoViewIfNeeded();
+    await row.hover();
+    await row.getByRole("button", { name: /^View thread:/ }).click();
+    const dock = page.locator("[data-panel-dock]");
+    await expect(dock).toBeVisible();
+    await dock.evaluate((element) =>
+      Promise.allSettled(
+        element.getAnimations().map((animation) => animation.finished),
+      ),
+    );
+    // The dock paints over the aside's control. Hit testing skips the covered,
+    // inert reader, so the probe lifts that while it reads the paint order.
+    expect(
+      await page.evaluate(({ x, y }) => {
+        const covered = document
+          .querySelector("[data-fixture-aside]")
+          .closest("[inert]");
+        covered?.removeAttribute("inert");
+        const hit = document.elementFromPoint(x, y);
+        covered?.setAttribute("inert", "");
+        return {
+          covered: !!covered,
+          docked: !!hit?.closest("[data-panel-dock]"),
+        };
+      }, center),
+    ).toEqual({ covered: true, docked: true });
+  });
+});
+
+test.describe("with a person typing", () => {
+  test.use({ productionBroker: true });
+
+  test("the typing label keeps the composer's column beside a docked aside", async ({
+    page,
+    app,
+  }) => {
+    await open(page, app);
+    await openAside(page);
+    await settle(page, history(page));
+    app.activity({ channel: "alpha" });
+    const typing = page
+      .locator('[aria-hidden="true"]')
+      .filter({ hasText: /is typing$/ });
+    await expect(typing).toBeVisible();
+    // The label's lane spans the composer's column.
+    const at = await layout(page);
+    const lane = await page
+      .locator('[data-audience="humans"]')
+      .filter({ hasText: /is typing$/ })
+      .boundingBox();
+    expect(Math.abs(lane.x - at.composer.left)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(lane.x + lane.width - at.composer.right),
+    ).toBeLessThanOrEqual(1);
+  });
 });

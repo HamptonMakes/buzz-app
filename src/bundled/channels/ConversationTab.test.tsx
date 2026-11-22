@@ -632,7 +632,7 @@ it("a conversation tab opens a reply at its message as the thread", () => {
 
 it("a message target that resolves to a thread keeps the workspace's aside after it", () => {
   const c = openingAt([{ id: "root" }, { id: "reply", threadRootId: "root" }]);
-  render(
+  const tab = (aside?: import("react").ReactNode) => (
     <ConversationTab
       {...c.props}
       tab={{
@@ -642,11 +642,15 @@ it("a message target that resolves to a thread keeps the workspace's aside after
         messageId: "reply",
         revealRequest: 1,
       }}
-      aside={<section aria-label="Plan" />}
-    />,
+      aside={aside}
+    />
   );
+  const { rerender } = render(tab());
   c.settle();
   const thread = screen.getByText("Thread content");
+  // The aside arriving later keeps the thread mounted.
+  rerender(tab(<section aria-label="Plan" />));
+  expect(screen.getByText("Thread content")).toBe(thread);
   const plan = screen.getByRole("region", { name: "Plan" });
   expect(
     thread.compareDocumentPosition(plan) & Node.DOCUMENT_POSITION_FOLLOWING,

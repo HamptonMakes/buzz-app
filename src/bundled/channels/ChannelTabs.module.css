@@ -20,13 +20,13 @@
 .conversation > aside {
   flex: 1;
 }
-.threadWithAside {
+.threadRow {
   position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
 }
-.threadWithAside > aside:first-child {
+.threadRow > aside:first-child {
   flex: 1;
   min-width: 0;
 }

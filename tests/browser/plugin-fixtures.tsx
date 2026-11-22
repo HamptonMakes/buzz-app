@@ -60,6 +60,8 @@ declare global {
     stalePanelClose?: () => void;
     fixtureNavigation?: Navigation;
     fixtureNotify?: (input: NotificationInput) => Promise<boolean>;
+    /** Adds or removes the reader's aside in place; undefined follows the route. */
+    fixtureAside?: (size: AsideSize | null | undefined) => void;
     fixturePageBroken?: boolean;
     fixtureSidebarWorkIconThrows?: boolean;
     fixtureSidebarRecovery?: boolean;
@@ -480,7 +482,18 @@ export const fixturePlugins: readonly BundledPlugin[] = [
                 })
               : undefined;
           const trailing = params?.trailing;
-          const asideSize = params?.aside;
+          // A plugin adds or removes its aside in place, as its content arrives.
+          const [shownAside, setShownAside] = useState<AsideSize | null>();
+          useEffect(() => {
+            window.fixtureAside = setShownAside;
+            return () => {
+              delete window.fixtureAside;
+            };
+          }, []);
+          const asideSize =
+            shownAside === undefined
+              ? params?.aside
+              : (shownAside ?? undefined);
           // The route's own target, kept stable across renders.
           const target = useMemo(() => {
             if (!params) return undefined;

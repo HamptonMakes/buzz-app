@@ -51,9 +51,11 @@
 .soloConversation {
   container: solo-conversation / inline-size;
 }
-/* A workspace's main reader and the page's aside, which this row positions. */
+/* A workspace's main reader and the page's aside, which this row positions.
+   Isolated, the aside stacks over the reader, never over a narrow dock. */
 .workspaceRow {
   position: relative;
+  isolation: isolate;
   display: flex;
   height: 100%;
   min-width: 0;

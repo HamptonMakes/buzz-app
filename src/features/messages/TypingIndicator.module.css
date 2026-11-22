@@ -90,9 +90,15 @@
 .typing[data-audience="humans"] {
   position: absolute;
   inset-block-end: calc(100% + var(--space-half));
-  inset-inline: var(--space-4);
+  /* Beside a channel timeline's docked aside, the composer's column. */
+  --typing-inset-start: calc(var(--space-4) + var(--composer-aside-inset, 0px));
+  --typing-inset-end: calc(
+    var(--typing-inset-start) +
+    var(--timeline-aside-width, 0px)
+  );
+  inset-inline: var(--typing-inset-start) var(--typing-inset-end);
   inline-size: min(
-    calc(100% - 2 * var(--space-4)),
+    calc(100% - var(--typing-inset-start) - var(--typing-inset-end)),
     var(--buzz-message-width, 52rem)
   );
   margin-inline: auto;
@@ -102,5 +108,5 @@
 }
 /* Matches the composer, which spans a compact list's full width. */
 :where(html[data-message-density="compact"]) .typing[data-audience="humans"] {
-  inline-size: calc(100% - 2 * var(--space-4));
+  inline-size: calc(100% - var(--typing-inset-start) - var(--typing-inset-end));
 }

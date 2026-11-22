@@ -155,16 +155,6 @@ export function ConversationTab({
       latest.current.openThread(messageId, rootId, intent),
     [],
   );
-  // A message target that resolves to a thread keeps the aside after it.
-  const withAside = (thread: ReactNode) =>
-    aside ? (
-      <div className={styles.threadWithAside}>
-        {thread}
-        {aside}
-      </div>
-    ) : (
-      thread
-    );
   return (
     <ConversationChannel
       session={session}
@@ -210,7 +200,9 @@ export function ConversationTab({
             parent={parent}
           />
         ) : target && inTimeline === false ? (
-          withAside(
+          // A message target that resolves to a thread keeps the aside after
+          // it, in one row with or without it, so adding it keeps the thread.
+          <div className={styles.threadRow}>
             <ConversationThread
               intro={intro}
               active={active}
@@ -221,8 +213,9 @@ export function ConversationTab({
               revealRequest={revealRequest}
               close={close}
               parent={parent}
-            />,
-          )
+            />
+            {aside}
+          </div>
         ) : (
           <SoloColumn enabled={soloConversation}>
             <ChannelBody
