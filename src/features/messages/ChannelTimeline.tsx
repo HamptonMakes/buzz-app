@@ -2088,9 +2088,15 @@ function Timeline({
           upwardGesture.current = false;
           setNewMessageCount(0);
         }
-        // Input can move the DOM before its scroll event is delivered.
+        // Input can move the DOM before its scroll event is delivered. With no
+        // input under way, the movement is layout's, as rows rewrap.
         if (!restore && scroller.current && measuredPosition.current)
-          recordPosition(scroller.current);
+          recordPosition(
+            scroller.current,
+            !pointerHeld.current &&
+              (layoutCorrection.current ||
+                inputEnded.current === intent.current),
+          );
         if (!restore && !follow.current) {
           settled.current = true;
           readingPositioned(scroller.current);
@@ -2398,19 +2404,19 @@ function Timeline({
         // React may receive this event before Virtua updates its handle metrics.
         const element = event.currentTarget;
         const v = handle.current;
-        // A resize can scroll before its size reaches state: that scroll is
-        // layout's, not the reader's.
-        const sized =
+        if (
+          v &&
+          settled.current &&
           edge.current?.clientWidth === size.width &&
-          element.clientHeight === size.height;
-        if (v && settled.current && sized) {
+          element.clientHeight === size.height
+        ) {
           recordPosition(
             element,
             layoutCorrection.current && !pointerHeld.current,
           );
           updateJumpToLatest(element);
         }
-        if (trailing && sized) trackTrailing(element);
+        if (trailing) trackTrailing(element);
         loadNearTop(element);
       }}
     >
