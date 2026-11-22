@@ -699,10 +699,9 @@ it("switches a card between a list and icons from its ••• menu, remembered
   );
   await user.click(await screen.findByRole("menuitemradio", { name: "Icons" }));
   expect(screen.getByText("Display: icons")).toBeInTheDocument();
-  // Icons wrap and show every row, so the card isn't resizable.
-  expect(rows()).not.toBeInTheDocument();
+  // Icons keep the card's size and its resizable rows.
   expect(
-    document.querySelector('[data-card-display="icons"]'),
+    document.querySelector('[data-card-display="icons"] [data-card-rows]'),
   ).toBeInTheDocument();
   view.unmount();
   render(card());

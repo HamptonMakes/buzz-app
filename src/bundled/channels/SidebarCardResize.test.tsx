@@ -8,16 +8,29 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { SidebarCardResize, useSidebarCardHeight } from "./SidebarCardResize";
+import { readView, writeView } from "../../shared/view-state";
+import { SidebarCardResize, useSidebarCardSize } from "./SidebarCardResize";
 
 const ROW = 32;
 afterEach(cleanup);
+/** Reports from the card's size observer, as a width change would send. */
+let resized: () => void = () => {};
 beforeEach(() => {
   localStorage.clear();
   vi.stubGlobal("requestAnimationFrame", (run: FrameRequestCallback) => {
     run(0);
     return 1;
   });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(report: () => void) {
+        resized = () => act(report);
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
 });
 
 type Mark = "dm" | "mention" | "channel" | "muted";
@@ -31,12 +44,12 @@ function Card({
    * mention in a muted channel. */
   marks?: Record<number, Mark>;
 }) {
-  const [height, resize, toggle] = useSidebarCardHeight("scope", "group:work");
+  const [size, resize, toggle] = useSidebarCardSize("scope", "group:work");
   return (
-    <div data-testid="card" data-height={String(height)}>
+    <div data-testid="card" data-size={String(size)}>
       <SidebarCardResize
         label="Work"
-        height={height}
+        size={size}
         onResize={resize}
         onToggle={toggle}
       >
@@ -74,24 +87,30 @@ function Card({
   );
 }
 
-/** jsdom has no layout: stack rows at a fixed pitch from the list's top. */
-function layOut(pitch = ROW) {
+/** jsdom has no layout: stack rows at a fixed pitch from the list's top, or
+ * wrap them as tiles, `perRow` to a line. */
+function layOut(pitch = ROW, perRow = 1) {
   const rows = [...document.querySelectorAll<HTMLElement>("[data-card-row]")];
   const list = rows[0]?.parentElement as HTMLElement;
-  for (const [index, row] of rows.entries())
+  for (const [index, row] of rows.entries()) {
+    const line = Math.floor(index / perRow);
     row.getBoundingClientRect = () =>
-      ({ top: index * pitch, bottom: (index + 1) * pitch }) as DOMRect;
+      ({ top: line * pitch, bottom: (line + 1) * pitch }) as DOMRect;
+  }
   list.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+  const full = Math.ceil(rows.length / perRow) * pitch;
   Object.defineProperty(list, "scrollHeight", {
-    value: rows.length * pitch,
+    value: full,
     configurable: true,
   });
   Object.defineProperty(list, "offsetHeight", {
-    get: () => Number.parseFloat(list.style.maxHeight) || rows.length * pitch,
+    get: () => Number.parseFloat(list.style.maxHeight) || full,
     configurable: true,
   });
   return list;
 }
+
+const saved = () => readView<unknown>("scope", "sidebar:card-sizes", {});
 
 it("offers a grip only when there is a row to hide", async () => {
   const { rerender } = render(<Card rows={1} />);
@@ -109,12 +128,62 @@ it("follows the pointer, settles on a whole row, and remembers it", () => {
   expect(list.style.maxHeight).toBe("110px");
   fireEvent.pointerUp(window, { pointerId: 1, clientY: 110 });
   expect(list.style.maxHeight).toBe(`${3 * ROW}px`);
+  expect(saved()).toEqual({ "group:work": 3 });
   cleanup();
   render(<Card rows={5} />);
+  expect(screen.getByTestId("card")).toHaveAttribute("data-size", "3");
   expect(
-    document.querySelector<HTMLElement>("[data-card-row]")?.parentElement?.style
-      .maxHeight,
-  ).toBe(`${3 * ROW}px`);
+    [...document.querySelectorAll("[data-card-row]")].map((row) =>
+      row.hasAttribute("data-card-clipped"),
+    ),
+  ).toEqual([false, false, false, true, true]);
+});
+
+it("keeps a card's count across a list, icons and back, and never saves the rounding", () => {
+  render(<Card rows={20} />);
+  const list = layOut();
+  resized();
+  expect(list.style.maxHeight).toBe(`${7 * ROW}px`);
+  // As icons, five to a line: seven rounds up to fill the second line.
+  layOut(ROW, 5);
+  resized();
+  expect(list.style.maxHeight).toBe(`${2 * ROW}px`);
+  expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "10");
+  // A wider sidebar fits all seven on one line, which shows full.
+  layOut(ROW, 8);
+  resized();
+  expect(list.style.maxHeight).toBe(`${ROW}px`);
+  expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "8");
+  // Back as a list: exactly seven, and nothing was ever saved.
+  layOut();
+  resized();
+  expect(list.style.maxHeight).toBe(`${7 * ROW}px`);
+  expect(saved()).toEqual({});
+});
+
+it("saves the tiles through the row an icon drag settles on", () => {
+  render(<Card rows={20} />);
+  const list = layOut(ROW, 5);
+  resized();
+  const grip = screen.getByLabelText("Resize Work");
+  fireEvent.pointerDown(grip, { button: 0, pointerId: 1, clientY: 64 });
+  fireEvent.pointerMove(window, { pointerId: 1, clientY: 100 });
+  fireEvent.pointerUp(window, { pointerId: 1, clientY: 100 });
+  // Three lines of five.
+  expect(list.style.maxHeight).toBe(`${3 * ROW}px`);
+  expect(saved()).toEqual({ "group:work": 15 });
+  layOut();
+  resized();
+  expect(list.style.maxHeight).toBe(`${15 * ROW}px`);
+});
+
+it("shows the default for a card whose old pixel height was saved", () => {
+  writeView("scope", "sidebar:card-heights", { "group:work": 3 * ROW });
+  render(<Card rows={20} />);
+  const list = layOut();
+  resized();
+  expect(screen.getByTestId("card")).toHaveAttribute("data-size", "undefined");
+  expect(list.style.maxHeight).toBe(`${7 * ROW}px`);
 });
 
 it("steps a row with the keyboard, and double-click opens full and resets to seven", () => {
@@ -143,7 +212,7 @@ it("tells assistive technology how many rows show, and Enter toggles full", () =
   fireEvent.keyDown(grip, { key: "ArrowUp" });
   expect(grip).toHaveAttribute("aria-valuenow", "8");
   expect(grip).toHaveAttribute("aria-valuemax", "9");
-  expect(grip).toHaveAttribute("aria-valuetext", "8 of 9 rows");
+  expect(grip).toHaveAttribute("aria-valuetext", "8 of 9 conversations");
   fireEvent.keyDown(grip, { key: "Enter" });
   expect(list.style.maxHeight).toBe("");
   expect(grip).toHaveAttribute("aria-valuenow", "9");
@@ -247,7 +316,7 @@ it("hands focus to the grip when the badge is used from the keyboard", () => {
   expect(grip).toHaveFocus();
 });
 
-it("remembers full, not a pixel height, when the badge opens to the last row", () => {
+it("remembers full when the badge opens to the last row", () => {
   render(<Card rows={5} marks={{ 4: "dm" }} />);
   const list = layOut();
   const grip = screen.getByRole("separator", { name: "Resize Work" });
@@ -259,7 +328,7 @@ it("remembers full, not a pixel height, when the badge opens to the last row", (
   );
   expect(list.style.maxHeight).toBe("");
   expect(screen.getByTestId("card")).toHaveAttribute(
-    "data-height",
+    "data-size",
     String(Number.MAX_SAFE_INTEGER),
   );
 });

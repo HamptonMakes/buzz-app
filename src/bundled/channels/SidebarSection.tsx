@@ -35,7 +35,7 @@ import { NavigationSectionHeading } from "../../shared/design-system/ui/Navigati
 import type { RelaySession } from "../../features/relay/session";
 import { SidebarGroupIcon } from "./SidebarGroupIcon";
 import { SidebarStarIcon } from "./SidebarStarIcon";
-import { SidebarCardResize, useSidebarCardHeight } from "./SidebarCardResize";
+import { SidebarCardResize, useSidebarCardSize } from "./SidebarCardResize";
 import {
   SidebarCardDisplayContext,
   useSidebarCardDisplay,
@@ -428,10 +428,20 @@ export function SidebarSection({
           hidden={!open}
         >
           {display === "icons" ? (
-            // Tiles wrap, so a card of them shows every row and has no grip.
+            // Tiles keep the list's size, rounded up to fill their last row.
             <div className={styles.cardTiles} data-card-display="icons">
               <SidebarCardDisplayContext.Provider value="icons">
-                {children}
+                {heightScope ? (
+                  <ResizableRows
+                    scope={heightScope}
+                    card={sectionKey}
+                    label={title}
+                  >
+                    {children}
+                  </ResizableRows>
+                ) : (
+                  children
+                )}
               </SidebarCardDisplayContext.Provider>
             </div>
           ) : heightScope ? (
@@ -458,11 +468,11 @@ function ResizableRows({
   label: string;
   children: ReactNode;
 }) {
-  const [height, resize, toggle] = useSidebarCardHeight(scope, card);
+  const [size, resize, toggle] = useSidebarCardSize(scope, card);
   return (
     <SidebarCardResize
       label={label}
-      height={height}
+      size={size}
       onResize={resize}
       onToggle={toggle}
     >

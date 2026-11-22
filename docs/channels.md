@@ -157,9 +157,12 @@ sidebars, the previous Solo workspaces come first, then **Solo**,
 own card. Reorder cards by dragging
 their header or using **Move up** and **Move down**. The saved order syncs with
 workspace placement. Double-click a workspace's header to rename it in place.
-A card shows its first ten rows; drag its bottom edge to show more or fewer, or
-double-click the edge (or press Enter on it) to show every row and back. Rows
-past a card's edge are skipped by the keyboard until the card shows them.
+A card shows seven conversations; drag its bottom edge to show more or fewer, or
+double-click the edge (or press Enter on it) to show every one, and again to go
+back to seven. The number is the card's, in a list or as icons: icons round it
+up to fill their last line without changing it, and dragging icons settles on
+whole lines and keeps how many show. Conversations past a card's edge are
+skipped by the keyboard until the card shows them.
 
 Drag a chat, channel, forum or DM into any workspace, into Favorites, or back
 to its home section. The row’s **Move to…** menu offers the same destinations.
