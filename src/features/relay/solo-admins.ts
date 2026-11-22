@@ -96,9 +96,13 @@ function readSoloAdminSetup(item: OutgoingEvent) {
     return { channel, admins, recovery: item.recovery };
 }
 
+/** Setup can no longer grant this agent, so it keeps its current role. */
+class GrantSkipped extends Error {}
+
 /** Reconstruct the exact same promotions after interruption. Their timestamp
  * and channel come from the saved create, so retries never invent a new grant
- * that could undo a later demotion or removal. */
+ * that could undo a later demotion or removal. A grant that can no longer be
+ * made is skipped, so setup always finishes and never blocks the chat. */
 export async function promoteSoloAdmins(
   creation: OutgoingEvent,
   writer: Omit<RelayWriter, "publish"> & {
@@ -121,6 +125,14 @@ export async function promoteSoloAdmins(
     reader.read(filters, { signal, fresh: true, priority: "foreground" });
   for (const admin of admins) {
     signal.throwIfAborted();
+    try {
+      await promote(admin);
+    } catch (error) {
+      if (!(error instanceof GrantSkipped)) throw error;
+      console.warn("Opening agent keeps its current role", admin, error);
+    }
+  }
+  async function promote(admin: string) {
     const template = {
       ...memberAdministrationTemplate(channel, create.pubkey, {
         pubkey: admin,
@@ -143,16 +155,14 @@ export async function promoteSoloAdmins(
         ])
       ).some((event) => event.id === id && event.pubkey === create.pubkey);
     // A recorded grant remains complete even when its recipient was demoted.
-    if (await recorded()) continue;
+    if (await recorded()) return;
     if (Date.now() / 1000 - create.created_at >= 15 * 60)
-      throw new Error(
-        "Chat admin setup expired. Choose Abandon admin setup in this chat to continue with current roles, or start a new chat.",
-      );
+      throw new GrantSkipped("Chat admin setup expired.");
     const ownership = await owned?.(admin, admins);
     const checkOwnership = () => {
       if (!ownership?.())
-        throw new Error(
-          "An opening agent is not verified as owned by the chat creator. Retry this message or choose Abandon admin setup in this chat to continue with current roles.",
+        throw new GrantSkipped(
+          "An opening agent is not verified as owned by the chat creator.",
         );
     };
     checkOwnership();
@@ -175,9 +185,7 @@ export async function promoteSoloAdmins(
       ([tag, key]) => tag === "p" && key === admin,
     )?.[3];
     if (!role || !["member", "bot", "admin"].includes(role))
-      throw new Error(
-        "An opening agent's access changed. Choose Abandon admin setup in this chat to continue with current roles.",
-      );
+      throw new GrantSkipped("An opening agent's access changed.");
     checkOwnership();
     const signed = await writer.sign(template, signal);
     signal.throwIfAborted();

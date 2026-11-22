@@ -29,7 +29,6 @@ import { ThreadPanel, type ThreadPanelProps } from "../messages/ThreadPanel";
 import { useListedChannel } from "../relay/listed-channel";
 import { ownSolo } from "../solo/labels";
 import { useSoloHasPeople } from "../solo/people";
-import { AdminSetupRecovery } from "../solo/AdminSetupRecovery";
 import {
   ConversationHost,
   type ConversationHostServices,
@@ -312,28 +311,19 @@ export function ConversationComposer(props: Own<MessageComposerProps>) {
     shared.soloConversation,
   );
   return (
-    <>
-      {shared.session.outbox && !props.threadRootId && (
-        <AdminSetupRecovery
-          key={shared.channelId}
-          outbox={shared.session.outbox}
-          channelId={shared.channelId}
-        />
-      )}
-      <MessageComposer
-        evidenceOwner={hostComposerProvenance}
-        {...shared}
-        {...(shared.soloConversation
-          ? {
-              label: withPeople
-                ? "Message this conversation"
-                : "Message your agents",
-            }
-          : {})}
-        chatPresentation={shared.ownSoloConversation}
-        requireMention={shared.soloConversation}
-        {...props}
-      />
-    </>
+    <MessageComposer
+      evidenceOwner={hostComposerProvenance}
+      {...shared}
+      {...(shared.soloConversation
+        ? {
+            label: withPeople
+              ? "Message this conversation"
+              : "Message your agents",
+          }
+        : {})}
+      chatPresentation={shared.ownSoloConversation}
+      requireMention={shared.soloConversation}
+      {...props}
+    />
   );
 }

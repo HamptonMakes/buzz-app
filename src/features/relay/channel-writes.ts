@@ -624,10 +624,8 @@ export function createChannelWrites(
         throw new Error("This connection cannot set up chat admins.");
       await created(pending.event.id);
       const saved = await source.recovery(soloAdminKey(id));
-      if (!saved?.recovery)
-        throw new Error(
-          "Chat admin setup ended in another window. Retry this message to continue.",
-        );
+      // Another window finished it.
+      if (!saved?.recovery) return;
       const recovery = saved.recovery;
       await promoteSoloAdmins(
         saved,
