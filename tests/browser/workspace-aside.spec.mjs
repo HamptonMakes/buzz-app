@@ -13,7 +13,7 @@ const history = (page) =>
 const dashboard = (page) =>
   history(page).getByRole("region", { name: "Fixture dashboard" });
 
-async function openAside(page, params = {}) {
+async function openReader(page, params) {
   await expect
     .poll(() =>
       page.evaluate(async (params) => {
@@ -23,16 +23,17 @@ async function openAside(page, params = {}) {
             kind: "page",
             pluginId: "fixture.session",
             pageId: "reader",
-            route: {
-              version: 1,
-              params: { channelId: "alpha", aside: "tall", ...params },
-            },
+            route: { version: 1, params: { channelId: "alpha", ...params } },
           })
           .catch(() => undefined);
         return result?.status;
       }, params),
     )
     .toBe("opened");
+}
+
+async function openAside(page, params = {}) {
+  await openReader(page, { aside: "tall", ...params });
   await expect(
     history(page).locator(
       '[data-fixture-aside="docked"], [data-fixture-aside="overlay"]',
@@ -249,12 +250,7 @@ test("layout keeps a reader's small scroll above the latest message", async ({
   await expect
     .poll(() => region.evaluate((element) => element.scrollHeight))
     .toBeGreaterThan(height);
-  await page.evaluate(
-    () =>
-      new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve)),
-      ),
-  );
+  await settle(page, region);
   const after = await place(region);
   expect(after.past, "the reader's scroll is kept").toBeLessThanOrEqual(-39);
   expect(
@@ -292,15 +288,22 @@ test("a docked aside sits beside the transcript, which leaves it its width", asy
   // moves it with the transcript.
   const rest = await place(region);
   await region.hover();
-  for (let i = 0; i < 20; i++) await page.mouse.wheel(0, -120);
-  await expect.poll(async () => (await place(region)).past).toBeLessThan(-2000);
+  // WebKit can coalesce wheel events sent faster than it renders, so wheel
+  // until the reader is well into history.
+  for (let i = 0; i < 60 && (await place(region)).past > -2000; i++)
+    await page.mouse.wheel(0, -120);
+  expect((await place(region)).past).toBeLessThan(-2000);
   await settle(page, region);
   const up = await place(region);
   expect(Math.abs(up.top - rest.top)).toBeLessThanOrEqual(1.5);
   for (let i = 0; i < 3; i++) await page.mouse.wheel(0, 120);
-  await expect.poll(async () => (await place(region)).past - up.past).toBe(360);
+  await expect
+    .poll(async () => (await place(region)).past - up.past)
+    .toBeGreaterThan(100);
+  await settle(page, region);
+  const back = await place(region);
   expect(
-    Math.abs((await place(region)).top - (up.top - 360)),
+    Math.abs(back.top - (up.top - (back.past - up.past))),
   ).toBeLessThanOrEqual(1.5);
 });
 
@@ -319,10 +322,13 @@ test("past the latest message only the widget moves, until its end shows", async
   for (let i = 0; i < 4; i++) await page.mouse.wheel(0, 60);
   await expect
     .poll(async () => (await place(region)).past - rest.past)
-    .toBe(240);
+    .toBeGreaterThan(100);
+  await settle(page, region);
   const past = await place(region);
   expect(past.row, "the transcript stays put").toBeCloseTo(rest.row, 0);
-  expect(past.top).toBeCloseTo(rest.top - 240, 0);
+  expect(
+    Math.abs(past.top - (rest.top - (past.past - rest.past))),
+  ).toBeLessThanOrEqual(1.5);
   // The range ends where the widget's end shows.
   for (let i = 0; i < 40; i++) await page.mouse.wheel(0, 120);
   await expect
@@ -334,6 +340,83 @@ test("past the latest message only the widget moves, until its end shows", async
   const end = await place(region);
   expect(end.bottom).toBeGreaterThan(end.view - 40);
   expect(end.row).toBeCloseTo(rest.row, 0);
+  // An aside that grows there lengthens the range to its new end.
+  await dashboard(page).evaluate((widget) => {
+    widget.style.paddingBottom = "200px";
+  });
+  await settle(page, region);
+  for (let i = 0; i < 4; i++) await page.mouse.wheel(0, 120);
+  await expect
+    .poll(async () => {
+      const at = await place(region);
+      return Math.round(at.bottom - at.view);
+    })
+    .toBeLessThanOrEqual(1);
+  expect((await place(region)).bottom).toBeGreaterThan(end.view - 40);
+});
+
+test("a short aside keeps its height and adds no range past the latest message", async ({
+  page,
+  app,
+}) => {
+  await open(page, app);
+  await openAside(page, { aside: "short" });
+  const region = history(page);
+  await settle(page, region);
+  const rest = await place(region);
+  expect(Math.abs(rest.past)).toBeLessThanOrEqual(1);
+  // The frame spans the viewport but leaves the aside its own height.
+  const heights = await region
+    .locator('[data-fixture-aside="docked"]')
+    .evaluate((root) => [
+      root.offsetHeight,
+      root.firstElementChild.offsetHeight + 24,
+      root.parentElement.offsetHeight,
+    ]);
+  expect(heights[0], "the frame does not stretch the aside").toBe(heights[1]);
+  expect(heights[2]).toBeGreaterThan(heights[0]);
+  expect(
+    await region.evaluate((element) =>
+      element.style.getPropertyValue("--timeline-aside-extra"),
+    ),
+  ).toBe("0px");
+  // Scrolling down at the latest message moves nothing.
+  await region.hover();
+  for (let i = 0; i < 3; i++) await page.mouse.wheel(0, 120);
+  await settle(page, region);
+  const after = await place(region);
+  expect(Math.abs(after.past)).toBeLessThanOrEqual(1);
+  expect(Math.abs(after.top - rest.top)).toBeLessThanOrEqual(1);
+});
+
+test("adding and removing the aside keeps the reader at the latest message", async ({
+  page,
+  app,
+}) => {
+  const atLatest = (region) =>
+    region.evaluate(
+      (element) =>
+        element.scrollHeight - element.clientHeight - element.scrollTop,
+    );
+  await open(page, app);
+  await openReader(page, {});
+  const region = history(page);
+  await settle(page, region);
+  expect(await atLatest(region)).toBeLessThanOrEqual(1);
+  await openAside(page);
+  await settle(page, region);
+  expect(Math.abs((await place(region)).past)).toBeLessThanOrEqual(1);
+  await openReader(page, {});
+  await expect(region.locator("[data-fixture-aside]")).toHaveCount(0);
+  await settle(page, region);
+  expect(await atLatest(region)).toBeLessThanOrEqual(1);
+  expect(
+    await region.evaluate((element) => [
+      element.hasAttribute("data-aside"),
+      element.style.getPropertyValue("--timeline-aside-width"),
+      element.style.getPropertyValue("--timeline-aside-extra"),
+    ]),
+  ).toEqual([false, "", ""]);
 });
 
 test("a narrow reader overlays the aside, taking no width, and resizing docks it again", async ({
@@ -413,6 +496,16 @@ test("Full brief and Hide move between the card's top and the latest message bes
   expect(card).toBeLessThanOrEqual(101);
   const expanded = await place(region);
   expect(expanded.bottom, "the widget stays on screen").toBeGreaterThan(0);
+  // The aside's range follows the card's: scrolling on shows the aside's end.
+  await region.hover();
+  for (let i = 0; i < 40; i++) await page.mouse.wheel(0, 120);
+  await expect
+    .poll(async () => {
+      const at = await place(region);
+      return Math.round(at.bottom - at.view);
+    })
+    .toBeLessThanOrEqual(1);
+  expect((await place(region)).bottom).toBeGreaterThan(expanded.view - 40);
   await toggle.click();
   await expect(toggle).toHaveText("Full brief");
   await settle(page, region);
