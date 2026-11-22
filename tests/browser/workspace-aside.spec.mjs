@@ -445,6 +445,8 @@ test("a narrow reader overlays the aside, taking no width, and resizing docks it
   // Opened, the overlay scrolls its own content, not the history.
   await overlay.getByRole("button", { name: "Show dashboard" }).click();
   await expect(dashboard(page)).toBeVisible();
+  // The resize's own layout corrections finish before the baseline.
+  await settle(page, region);
   const offset = await region.evaluate((element) => element.scrollTop);
   const scrolled = await overlay.evaluate((element) => {
     element.scrollTop = 200;
@@ -454,6 +456,7 @@ test("a narrow reader overlays the aside, taking no width, and resizing docks it
     };
   });
   expect(scrolled).toEqual({ own: true, top: 200 });
+  await settle(page, region);
   expect(await region.evaluate((element) => element.scrollTop)).toBe(offset);
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(region.locator('[data-fixture-aside="docked"]')).toBeVisible();
