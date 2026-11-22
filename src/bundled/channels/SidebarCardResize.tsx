@@ -14,10 +14,8 @@ import { needsYou } from "./conversation-rows";
 import styles from "./Channels.module.css";
 
 const heightsKey = "sidebar:card-heights";
-/** Each full card's height from before it went full, for double-click back. */
-const restoreKey = "sidebar:card-restore";
-/** Rows a card shows until its grip is dragged. */
-const DEFAULT_ROWS = 10;
+/** Rows a card shows until its grip is dragged, and after full is toggled off. */
+const DEFAULT_ROWS = 7;
 /** The saved height of a card opened full. */
 const ALL_ROWS = Number.MAX_SAFE_INTEGER;
 /** Set once someone drags or double-clicks any grip on this device. */
@@ -39,40 +37,32 @@ function savedHeights(scope: string, key: string): Record<string, number> {
 
 /**
  * A card's height, remembered on this device: where its grip was left, or
- * full. Dragging sets it. Toggling switches between full and the height from
- * before full, which is the first ten rows when there was none.
+ * full. Dragging sets it. Toggling opens a card full, and closes a full card
+ * back to the first seven rows.
  */
 export function useSidebarCardHeight(scope: string, card: string) {
   const height = useSyncExternalStore(
     (change) => subscribeView(scope, change),
     () => savedHeights(scope, heightsKey)[card],
   );
-  const save = (key: string, next: number | undefined) => {
-    const { [card]: _, ...rest } = savedHeights(scope, key);
+  const resize = (next: number | undefined) => {
+    const { [card]: _, ...rest } = savedHeights(scope, heightsKey);
     writeView(
       scope,
-      key,
+      heightsKey,
       next === undefined ? rest : { ...rest, [card]: next },
     );
   };
-  const resize = (next: number | undefined) => {
-    save(restoreKey, undefined);
-    save(heightsKey, next);
-  };
-  const toggle = () => {
-    const back = savedHeights(scope, restoreKey)[card];
-    save(restoreKey, height === ALL_ROWS ? undefined : height);
-    save(heightsKey, height === ALL_ROWS ? back : ALL_ROWS);
-  };
+  const toggle = () => resize(height === ALL_ROWS ? undefined : ALL_ROWS);
   return [height, resize, toggle] as const;
 }
 
 /**
- * A card's rows and the grip on its bottom edge. The rows show the first ten
+ * A card's rows and the grip on its bottom edge. The rows show the first seven
  * until the grip is dragged, then clip to wherever it is left; full shows
  * every row. The drag follows the pointer exactly, then settles onto the
- * nearest whole row on release; the bottom stop is full. Double-click or Enter toggles
- * full. Rows are the descendants marked `data-card-row`.
+ * nearest whole row on release; the bottom stop is full. Double-click or Enter opens
+ * full, and closes full back to the first seven. Rows are the descendants marked `data-card-row`.
  */
 export function SidebarCardResize({
   label,
@@ -82,11 +72,11 @@ export function SidebarCardResize({
   children,
 }: {
   label: string;
-  /** Pixels, ALL_ROWS for full, or undefined for the first ten. */
+  /** Pixels, ALL_ROWS for full, or undefined for the first seven. */
   height: number | undefined;
   /** A height the grip settled on, ALL_ROWS at its bottom stop. */
   onResize(height: number): void;
-  /** Switch between full and the height from before full. */
+  /** Open full, or close full back to the first seven rows. */
   onToggle(): void;
   children: ReactNode;
 }) {
@@ -213,7 +203,7 @@ export function SidebarCardResize({
           {...(learned && { open: false })}
           content={
             height === ALL_ROWS
-              ? "Drag to resize · Double-click to show less"
+              ? "Drag to resize · Double-click to reset"
               : "Drag to resize · Double-click to show all"
           }
         >
@@ -334,7 +324,7 @@ export function SidebarCardResize({
 }
 
 /**
- * Clip the list to a saved height: ten rows when unset, none when full. A
+ * Clip the list to a saved height: seven rows when unset, none when full. A
  * saved height lands on a whole row even after text size changes. Rows past
  * the clip are inert, so focus and the keyboard skip what the card hides.
  * Returns how many rows show.

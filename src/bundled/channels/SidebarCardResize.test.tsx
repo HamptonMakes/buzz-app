@@ -117,12 +117,12 @@ it("follows the pointer, settles on a whole row, and remembers it", () => {
   ).toBe(`${3 * ROW}px`);
 });
 
-it("steps a row with the keyboard, and double-click toggles full and back", () => {
-  render(<Card rows={5} />);
+it("steps a row with the keyboard, and double-click opens full and resets to seven", () => {
+  render(<Card rows={9} />);
   const list = layOut();
   const grip = screen.getByLabelText("Resize Work");
   fireEvent.keyDown(grip, { key: "ArrowUp" });
-  expect(list.style.maxHeight).toBe(`${4 * ROW}px`);
+  expect(list.style.maxHeight).toBe(`${8 * ROW}px`);
   // A double-click's own clicks press and release without moving.
   for (const _ of [1, 2]) {
     fireEvent.pointerDown(grip, { button: 0, pointerId: 1, clientY: 128 });
@@ -131,23 +131,24 @@ it("steps a row with the keyboard, and double-click toggles full and back", () =
   expect(grip.style.pointerEvents).toBe("");
   fireEvent.doubleClick(grip);
   expect(list.style.maxHeight).toBe("");
+  // Closing full resets to the default, not the dragged height.
   fireEvent.doubleClick(grip);
-  expect(list.style.maxHeight).toBe(`${4 * ROW}px`);
+  expect(list.style.maxHeight).toBe(`${7 * ROW}px`);
 });
 
 it("tells assistive technology how many rows show, and Enter toggles full", () => {
-  render(<Card rows={5} />);
+  render(<Card rows={9} />);
   const list = layOut();
   const grip = screen.getByRole("separator", { name: "Resize Work" });
   fireEvent.keyDown(grip, { key: "ArrowUp" });
-  expect(grip).toHaveAttribute("aria-valuenow", "4");
-  expect(grip).toHaveAttribute("aria-valuemax", "5");
-  expect(grip).toHaveAttribute("aria-valuetext", "4 of 5 rows");
+  expect(grip).toHaveAttribute("aria-valuenow", "8");
+  expect(grip).toHaveAttribute("aria-valuemax", "9");
+  expect(grip).toHaveAttribute("aria-valuetext", "8 of 9 rows");
   fireEvent.keyDown(grip, { key: "Enter" });
   expect(list.style.maxHeight).toBe("");
-  expect(grip).toHaveAttribute("aria-valuenow", "5");
+  expect(grip).toHaveAttribute("aria-valuenow", "9");
   fireEvent.keyDown(grip, { key: "Enter" });
-  expect(list.style.maxHeight).toBe(`${4 * ROW}px`);
+  expect(list.style.maxHeight).toBe(`${7 * ROW}px`);
 });
 
 it("keeps the grip showing while rows are past the card's edge", () => {
@@ -306,29 +307,29 @@ function layOutAhead() {
   };
 }
 
-it("shows ten rows until changed, full shows every row, and full toggles back to ten", () => {
+it("shows seven rows until changed, full shows every row, and full toggles back to seven", () => {
   const restore = layOutAhead();
   try {
     render(<Card rows={60} />);
     const list = document.querySelector<HTMLElement>("[data-card-row]")
       ?.parentElement as HTMLElement;
-    expect(list.style.maxHeight).toBe(`${10 * ROW}px`);
+    expect(list.style.maxHeight).toBe(`${7 * ROW}px`);
     const grip = screen.getByLabelText("Resize Work");
     fireEvent.pointerDown(grip, { button: 0, pointerId: 1, clientY: 320 });
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 9000 });
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 9000 });
     // All sixty rows show, with no cap.
     expect(list.style.maxHeight).toBe("");
-    // Full with nothing to go back to returns to the first ten rows.
+    // Closing full returns to the first seven rows.
     fireEvent.doubleClick(grip);
-    expect(list.style.maxHeight).toBe(`${10 * ROW}px`);
+    expect(list.style.maxHeight).toBe(`${7 * ROW}px`);
   } finally {
     restore();
   }
 });
 
-it("makes rows past the card's edge inert and lands a saved height on a whole row", () => {
-  render(<Card rows={5} />);
+it("makes rows past the card's edge inert and lands a saved height on a whole row", async () => {
+  const { rerender } = render(<Card rows={5} />);
   const list = layOut();
   const grip = screen.getByLabelText("Resize Work");
   // Release between rows two and three, then change the text size so the
@@ -347,9 +348,10 @@ it("makes rows past the card's edge inert and lands a saved height on a whole ro
   ]);
   expect(rows[2]).toHaveAttribute("data-card-clipped");
   // Larger text: rows are now 40px tall, so 64px is nearest to row two's end.
+  // A row arriving and leaving makes the card measure again.
+  await act(async () => rerender(<Card rows={6} />));
   layOut(40);
-  fireEvent.doubleClick(grip);
-  fireEvent.doubleClick(grip);
+  await act(async () => rerender(<Card rows={5} />));
   expect(list.style.maxHeight).toBe("80px");
   expect(rows.map((row) => row.inert === true)).toEqual([
     false,
