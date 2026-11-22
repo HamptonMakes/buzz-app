@@ -541,3 +541,44 @@ test("Full brief and Hide move between the card's top and the latest message bes
   await settle(page, region);
   expect(Math.abs((await place(region)).past)).toBeLessThanOrEqual(1);
 });
+
+test("a live resize beside an aside keeps the reader at rest", async ({
+  page,
+  app,
+}) => {
+  await open(page, app);
+  await openAside(page, { trailing: "long" });
+  const region = history(page);
+  // Measured without the widget: narrow widths show the aside as an overlay.
+  const past = () =>
+    region.evaluate((element) => {
+      const content = element.querySelector(
+        '[aria-label="Fixture card"]',
+      )?.parentElement;
+      const card = -Number.parseFloat(content?.style.bottom || "0");
+      const transcript = element.firstElementChild;
+      return (
+        element.scrollTop -
+        Math.max(0, transcript.offsetHeight - element.clientHeight - card)
+      );
+    });
+  await settle(page, region);
+  expect(Math.abs(await past())).toBeLessThanOrEqual(1);
+  // A window drag resizes faster than the timeline renders, undocking and
+  // docking the aside and rewrapping the card as it goes.
+  for (const [from, to] of [
+    [1280, 860],
+    [860, 1320],
+  ]) {
+    for (let step = 1; step <= 30; step++)
+      await page.setViewportSize({
+        width: Math.round(from + ((to - from) * step) / 30),
+        height: 800,
+      });
+    await settle(page, region);
+    expect(
+      Math.abs(await past()),
+      `at rest after resizing to ${to}`,
+    ).toBeLessThanOrEqual(1);
+  }
+});
