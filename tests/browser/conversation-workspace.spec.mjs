@@ -321,18 +321,17 @@ test.describe("trailing content", () => {
     await expect(toggle(region)).toHaveText("Full brief");
     await settle(page, region);
     expect(Math.abs((await place(region)).past)).toBeLessThanOrEqual(1);
-    // A window drag resizes a frame at a time, rewrapping the card as it goes.
+    // A window drag resizes faster than the timeline renders, rewrapping the
+    // card as it goes: each resize scrolls before the new size reaches state.
     for (const [from, to] of [
       [1200, 860],
       [860, 1200],
     ]) {
-      for (let step = 1; step <= 30; step++) {
+      for (let step = 1; step <= 30; step++)
         await page.setViewportSize({
           width: Math.round(from + ((to - from) * step) / 30),
           height: 650,
         });
-        await page.evaluate(() => new Promise(requestAnimationFrame));
-      }
       await settle(page, region);
       const rest = await place(region);
       expect(

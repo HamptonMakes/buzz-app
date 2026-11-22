@@ -2398,19 +2398,19 @@ function Timeline({
         // React may receive this event before Virtua updates its handle metrics.
         const element = event.currentTarget;
         const v = handle.current;
-        if (
-          v &&
-          settled.current &&
+        // A resize can scroll before its size reaches state: that scroll is
+        // layout's, not the reader's.
+        const sized =
           edge.current?.clientWidth === size.width &&
-          element.clientHeight === size.height
-        ) {
+          element.clientHeight === size.height;
+        if (v && settled.current && sized) {
           recordPosition(
             element,
             layoutCorrection.current && !pointerHeld.current,
           );
           updateJumpToLatest(element);
         }
-        if (trailing) trackTrailing(element);
+        if (trailing && sized) trackTrailing(element);
         loadNearTop(element);
       }}
     >
