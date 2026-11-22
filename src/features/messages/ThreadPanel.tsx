@@ -479,6 +479,7 @@ function OwnedThreadPanel({
   requireReadyRoot,
   onDraftSaved,
   onSend,
+  onResolvedRoot,
 }: ThreadPanelProps) {
   const [view, setView] = useState<ThreadView>();
   const [error, setError] = useState<string>();
@@ -565,6 +566,7 @@ function OwnedThreadPanel({
       subthreadId={subthreadId}
       onDraftSaved={onDraftSaved}
       onSend={onSend}
+      onResolvedRoot={onResolvedRoot}
       onOpenLink={onOpenLink}
       onOpenMediaReview={onOpenMediaReview}
       canOpenLink={canOpenLink}
