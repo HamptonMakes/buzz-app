@@ -389,6 +389,33 @@ test("a short aside keeps its height and adds no range past the latest message",
   expect(Math.abs(after.top - rest.top)).toBeLessThanOrEqual(1);
 });
 
+test("an aside docking beside a short transcript as the view shrinks shows its top and reaches its end", async ({
+  page,
+  app,
+}) => {
+  await page.setViewportSize({ width: 860, height: 800 });
+  await open(page, app);
+  await openAside(page, { channelId: "beta" });
+  const region = history(page);
+  await expect(region.locator('[data-fixture-aside="overlay"]')).toBeVisible();
+  // It docks in the same layout that shortens the view.
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await expect(region.locator('[data-fixture-aside="docked"]')).toBeVisible();
+  await settle(page, region);
+  const rest = await place(region);
+  expect(rest.top, "its top shows").toBeGreaterThanOrEqual(0);
+  await region.hover();
+  for (let i = 0; i < 30; i++) await page.mouse.wheel(0, 120);
+  await expect
+    .poll(async () => {
+      const at = await place(region);
+      return Math.round(at.bottom - at.view);
+    })
+    .toBeLessThanOrEqual(1);
+  const end = await place(region);
+  expect(end.bottom, "its end shows").toBeGreaterThan(end.view - 40);
+});
+
 test("adding and removing the aside keeps the reader at the latest message", async ({
   page,
   app,

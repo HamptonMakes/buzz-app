@@ -1239,6 +1239,7 @@ function Timeline({
     let shown = 0;
     let offset = element.scrollTop;
     let length = transcript.offsetHeight;
+    let band = 0;
     // How far the aside reaches below the fold at the transcript's end.
     let reach = 0;
     // Up to the latest message, the range past it is what the aside will
@@ -1259,23 +1260,27 @@ function Timeline({
       const view = element.clientHeight;
       frame.style.minHeight = `${view}px`;
       const height = frame.offsetHeight;
-      const band = view - height;
-      frame.style.top = `${band}px`;
-      frame.style.bottom = `${band}px`;
+      const nextBand = view - height;
+      frame.style.top = `${nextBand}px`;
+      frame.style.bottom = `${nextBand}px`;
       const bounds = element.getBoundingClientRect();
       const nextOffset = element.scrollTop;
       const nextLength = transcript.offsetHeight;
       // A scroll since the last placement, whichever callback sees it first,
       // moved the frame as the reader sees it. The timeline's own jump of more
       // than a viewport with no rows landing, and layout without a scroll,
-      // move the rows under a still frame: both keep its place.
+      // move the rows under a still frame: both keep its place. So does a new
+      // band, from a resize or the aside's own height: the browser has not
+      // yet placed the frame in it.
       if (
         nextOffset !== offset &&
+        nextBand === band &&
         (userScrolled.current ||
           nextLength !== length ||
           Math.abs(nextOffset - offset) <= view)
       )
         shown = frame.getBoundingClientRect().top - bounds.top;
+      band = nextBand;
       shown = Math.min(0, Math.max(band, shown));
       offset = nextOffset;
       length = nextLength;
