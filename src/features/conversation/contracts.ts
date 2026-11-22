@@ -490,11 +490,13 @@ export type ConversationWorkspaceProps = {
     restHeight: number;
     content(state: { expanded: boolean; toggle(): void }): ReactNode;
   };
-  /** Content beside the main tab's reader. A channel timeline shows it at its
-   * scroller's end edge and scrolls it with the transcript, which leaves it
-   * the width of its in-flow content; out-of-flow content takes none. A thread
-   * shows it after the reader, before the side pane. Either way its offset
-   * parent spans the reader, and it sets its own width. */
+  /** Content beside the main tab's reader. A channel timeline floats it at its
+   * scroller's end edge, beside the scrollbar, and leaves it the width of its
+   * in-flow content; out-of-flow content takes none. Docked, it may fill
+   * `--workspace-aside-max-height`, down to the frame's bottom beside the
+   * composer, and scrolls its own content. A thread shows it after the reader,
+   * before the side pane. Either way its offset parent spans the reader, and it
+   * sets its own width. */
   aside?: ReactNode;
   /** Actions in the pane's menu and the main tab's context menu. */
   actions?: readonly { label: string; run(): void }[];

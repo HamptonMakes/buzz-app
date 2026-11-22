@@ -375,8 +375,8 @@ export function PageTabs({
       : 1,
   );
   const primaryTarget = workspace?.target;
-  // The channel timeline scrolls the aside with the transcript; a thread
-  // target keeps it beside the reader.
+  // The channel timeline floats the aside over its end edge; a thread target
+  // keeps it beside the reader.
   const asideInReader = !primaryTarget?.threadId;
   const latestRequest = primaryTarget?.messageId
     ? undefined

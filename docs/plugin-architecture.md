@@ -3362,16 +3362,17 @@ present, so a `position: sticky; bottom: 0` element inside it sits on the
 history's bottom edge.
 With `workspaceSlots.aside`, `aside` renders beside the main tab's reader and
 sets its own width. Its offset parent spans the reader, so a page can watch its
-width to choose its own layout. A channel timeline shows the aside at its
-scroller's end edge, and the transcript leaves it the width of its in-flow
-content; content positioned out of flow, such as an overlay in a narrow reader,
-takes none and scrolls itself. The aside scrolls with the transcript: one taller
-than the viewport moves until its top or end shows and then stays at that edge,
-and a reversal moves it at once. Rows landing or measuring above the reader
-leave it in place. Past the latest message the transcript stays put while a
-range as long as the aside still has below the fold scrolls only the aside,
-after any trailing content's range. A thread target shows the aside after the
-reader, before the side pane, with no scrolling.
+width to choose its own layout. A channel timeline floats the aside at its
+scroller's end edge, beside the scrollbar, from the history's top. The history
+and the composer leave it the width of its in-flow content; content positioned
+out of flow, such as an overlay in a narrow reader, takes none and spans the
+history. The aside stays put while the history scrolls. Docked, it may reach the
+frame's bottom beside the composer: the host sets
+`--workspace-aside-max-height` to that height, and the aside grows with its
+content up to it and scrolls its own content past it. The host's container
+neither clips nor traps fixed positioning, so popovers can escape the aside over
+the history and composer. A thread target shows the aside after the reader,
+before the side pane, with no scrolling.
 
 `open({ channelId, messageId })` opens the conversation at that message. The
 shared `useMessageOpening` reader waits for verified history (cached rows

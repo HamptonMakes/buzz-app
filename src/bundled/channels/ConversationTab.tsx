@@ -34,7 +34,7 @@ type ConversationTabProps = {
   intro?: ReactNode;
   /** Only the channel timeline shows it, not a thread. */
   trailing?: ConversationWorkspaceProps["trailing"];
-  /** The channel timeline shows it in its scroller; a thread, after itself. */
+  /** The channel timeline floats it beside itself; a thread, after itself. */
   aside?: ReactNode;
   subthreadId?: string | undefined;
   latestRequest?: AbortSignal | undefined;

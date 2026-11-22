@@ -301,10 +301,6 @@ function setup({
     onBlur: (event: unknown) => void;
   }>;
   let section: Section;
-  // The transcript box holds the feed's edge and list.
-  const feed = () =>
-    (section.props.children[0] as ReactElement<{ children: unknown[] }>).props
-      .children;
   let channelId = "channel";
   let revealMessageId: string | undefined;
   let key: string | null = null;
@@ -353,7 +349,7 @@ function setup({
       ) => ReactElement<{ children: Section }>
     )(scoped.props).props.children;
     section.props.ref.current = element;
-    const edge = feed()[0] as ReactElement<{
+    const edge = section.props.children[0] as ReactElement<{
       ref: { current: unknown };
     }>;
     edge.props.ref.current = {
@@ -362,7 +358,7 @@ function setup({
       },
       getBoundingClientRect: () => ({ height: 0 }),
     };
-    const virtualizer = feed().find(
+    const virtualizer = section.props.children.find(
       (child) =>
         !!child &&
         typeof child === "object" &&
@@ -392,7 +388,7 @@ function setup({
       render();
     },
     pinned() {
-      const virtualizer = feed().find(
+      const virtualizer = section.props.children.find(
         (child) =>
           !!child &&
           typeof child === "object" &&
@@ -429,14 +425,14 @@ function setup({
       render();
     },
     hasHistoryButton() {
-      const edge = feed()[0] as ReactElement<{
+      const edge = section.props.children[0] as ReactElement<{
         children: ReactElement[];
       }>;
       return edge.props.children.some((child) => child?.type === Button);
     },
     /** The edge's alert text, if any. */
     alert() {
-      const edge = feed()[0] as ReactElement<{
+      const edge = section.props.children[0] as ReactElement<{
         children: ReactElement<{ role?: string; children: unknown }>[];
       }>;
       return edge.props.children.find(
@@ -445,7 +441,7 @@ function setup({
     },
     /** The edge's history button label, if any. */
     historyButton() {
-      const edge = feed()[0] as ReactElement<{
+      const edge = section.props.children[0] as ReactElement<{
         children: ReactElement<{ children: unknown }>[];
       }>;
       return edge.props.children.find((child) => child?.type === Button)?.props
@@ -453,7 +449,7 @@ function setup({
     },
     /** The edge's plain caption text, if any (not its alert or status). */
     caption() {
-      const edge = feed()[0] as ReactElement<{
+      const edge = section.props.children[0] as ReactElement<{
         children: ReactElement<{ role?: string; children: unknown }>[];
       }>;
       return edge.props.children.find(
@@ -467,7 +463,7 @@ function setup({
       render();
     },
     retry() {
-      const edge = feed()[0] as ReactElement<{
+      const edge = section.props.children[0] as ReactElement<{
         children: ReactElement[];
       }>;
       const button = edge.props.children.find(
@@ -525,7 +521,7 @@ function setup({
       render();
     },
     jumpToLatest() {
-      const button = feed().find(
+      const button = section.props.children.find(
         (child) =>
           !!child &&
           typeof child === "object" &&
@@ -536,7 +532,7 @@ function setup({
       button?.props.onClick();
     },
     hasJumpToLatest() {
-      const visible = feed().some(
+      const visible = section.props.children.some(
         (child) =>
           !!child &&
           typeof child === "object" &&

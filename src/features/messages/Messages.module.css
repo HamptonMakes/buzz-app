@@ -108,64 +108,33 @@
   width: min(100%, var(--timeline-measure));
   margin-inline: auto;
 }
-/* The transcript and a page's aside share the feed's scroller.
-   Without an aside the transcript box adds nothing to the layout. */
-.transcript {
-  display: contents;
+/* A docked aside's width, which ChannelTimeline measures, insets the history.
+   The scrollbar stays at the reader's end edge. */
+.feed[data-aside-docked] {
+  padding-inline-end: calc(
+    var(--space-panel-inset) +
+    var(--timeline-aside-width)
+  );
 }
-.feed[data-aside] {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  /* The transcript, then the aside's range past its end, which ChannelTimeline
-     sets. The range follows the transcript's height as rows land, with no
-     frame between them. */
-  grid-template-rows: max-content var(--timeline-aside-extra, 0px);
-  align-items: start;
-  /* As with trailing content: past the pinned transcript's end the inset
-     would only start the aside's range early, moving it at the latest
-     message. */
-  --history-bottom-inset: 0px;
-}
-.feed[data-aside] > .transcript {
-  display: block;
-  grid-area: 1 / 1;
-  min-width: 0;
-  min-height: var(--timeline-aside-view, 0px);
-  /* ChannelTimeline pins the transcript's end to the scrollport's bottom while
-     the aside's range past it scrolls. */
-  position: sticky;
-  top: var(--timeline-transcript-pin, auto);
-  /* The aside's docked width, which ChannelTimeline measures. */
-  padding-inline-end: var(--timeline-aside-width);
-}
-/* The aside overlays the transcript's grid cell, so the plugin's frame spans the
-   reader's width; only the plugin's own content takes pointer input. */
-.asideColumn {
-  grid-area: 1 / 1 / 3 / 2;
-  align-self: stretch;
-  /* It spans the rows the transcript and the range size, without sizing them. */
-  contain: size;
-  z-index: 3;
-  pointer-events: none;
-  /* The frame's place is measured from the end, above a spacer. */
+/* A page's aside floats at the reader's end edge, out of the history's flow;
+   ChannelTimeline places it beside the scroller's scrollbar and sets
+   --workspace-aside-max-height to the height it may fill. It spans the reader,
+   as the plugin's offset parent. It clips nothing and traps no fixed
+   positioning, so the plugin's popovers can escape over the history and
+   composer; the plugin scrolls its own content. Only the plugin's own content
+   takes pointer input. */
+.aside {
+  position: absolute;
+  z-index: 5;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  align-items: flex-end;
+  pointer-events: none;
 }
-.asideFrame {
-  /* ChannelTimeline sets both insets; see its two-way sticky. */
-  position: sticky;
-  flex: none;
-  top: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-}
-.asideFrame > * {
+.aside > * {
   pointer-events: auto;
 }
-/* The aside's own lists keep their spacing. */
-.transcript ol {
+.feed ol {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -802,8 +771,9 @@ html[data-keyboard-navigation] .attachmentImage:focus-visible {
   flex-direction: column;
   flex-shrink: 0;
   min-width: 0;
+  /* Unset without an aside, which leaves no padding. */
   padding-inline: var(--composer-aside-inset)
-    calc(var(--timeline-aside-width, 0px) + var(--composer-aside-inset));
+    calc(var(--timeline-aside-width) + var(--composer-aside-inset));
 }
 /* Under a channel timeline with a docked aside, the composer and its
    accessories take the transcript's width and inset, never the aside's. The

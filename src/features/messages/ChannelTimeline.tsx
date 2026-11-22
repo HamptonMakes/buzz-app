@@ -243,7 +243,7 @@ export type ChannelTimelineProps = {
   intro?: ReactNode;
   /** Content after the rows that grows into view past the latest message. */
   trailing?: ConversationWorkspaceProps["trailing"];
-  /** A page's aside, which scrolls with the transcript in this scroller. */
+  /** A page's aside, floating at the scroller's end edge. */
   aside?: ReactNode;
   launchPending?: boolean | undefined;
   /** Solo chats page history on scroll; retain an explicit button for errors. */
@@ -933,13 +933,8 @@ function Timeline({
   // Only read at mount and unmount, so build it on demand.
   const signature = () =>
     `${geometrySignature(visibleRows, profiles, resolveName)}:${JSON.stringify([...foldedActivity].sort())}`;
-  // The rows in the transcript's last viewport. Past the transcript's end the
-  // pinned transcript keeps them in view while the offset runs past the list,
-  // where Virtua would render none.
-  const [asideKeep, setAsideKeep] = useState(Number.POSITIVE_INFINITY);
   // Mount the saved boundary before restoration measures its divider inset.
   const keptIndices = rows.flatMap((row, index) =>
-    index >= asideKeep ||
     row.id === focusedMessageId ||
     row.id === focusedActivityId ||
     (disclosures.get(row.id)?.ids[0] === focusedActivityId &&
@@ -958,17 +953,8 @@ function Timeline({
   const edge = useRef<HTMLDivElement>(null);
   const activityTail = useRef<HTMLDivElement>(null);
   const trailingBox = useRef<HTMLDivElement>(null);
-  const transcriptBox = useRef<HTMLDivElement>(null);
-  const asideSpacer = useRef<HTMLDivElement>(null);
-  const asideFrame = useRef<HTMLDivElement>(null);
-  // The scroll range past the latest message: the trailing content's height
-  // past its rest height, and the aside's range past the
-  // transcript's end, where only the aside moves.
+  // The trailing content's height past its rest height.
   const trailingExtra = useRef(0);
-  const cardExtra = useRef(0);
-  const asideExtra = useRef(0);
-  // The aside's range past the transcript's end for a card extent.
-  const asideRange = useRef<(card: number) => number>(undefined);
   useLayoutEffect(() => {
     const tail = activityTail.current;
     const element = scroller.current;
@@ -1102,22 +1088,81 @@ function Timeline({
         : undefined;
     setTrailingExpanded(!!trailingPlace.current);
   };
-  const hasTrailing = !!trailing;
+  const asideFloat = useRef<HTMLDivElement>(null);
   const hasAside = !!aside;
+  // The aside floats over the reader's end edge from the scroller's top, beside
+  // its scrollbar. Docked, its in-flow width insets the history and the
+  // composer, and it reaches the frame's bottom beside the composer. A plugin's
+  // overlay, positioned out of flow, takes no width and spans the scroller.
+  // The plugin scrolls its own content within the height given to it.
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    const frame = element?.parentElement;
+    const float = asideFloat.current;
+    if (!hasAside || !element || !frame || !float) return;
+    if (typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      let width = 0;
+      for (const child of float.children) {
+        const position = getComputedStyle(child).position;
+        if (position !== "absolute" && position !== "fixed")
+          width += child.getBoundingClientRect().width;
+      }
+      frame.style.setProperty("--timeline-aside-width", `${width}px`);
+      element.toggleAttribute("data-aside-docked", width > 0);
+      const left = element.offsetLeft + element.clientLeft;
+      const end = element.offsetTop + element.offsetHeight;
+      float.style.top = `${element.offsetTop}px`;
+      float.style.left = `${element.offsetLeft}px`;
+      float.style.right = `${frame.clientWidth - left - element.clientWidth}px`;
+      const bottom = width > 0 ? frame.clientHeight : end;
+      float.style.bottom = `${frame.clientHeight - bottom}px`;
+      float.style.setProperty(
+        "--workspace-aside-max-height",
+        `${bottom - element.offsetTop}px`,
+      );
+    };
+    const resize = new ResizeObserver(measure);
+    const watch = () => {
+      resize.disconnect();
+      children.disconnect();
+      resize.observe(frame);
+      resize.observe(element);
+      children.observe(float, { childList: true });
+      for (const child of float.children) {
+        resize.observe(child);
+        // A child can move into or out of flow at the same size.
+        children.observe(child, {
+          attributes: true,
+          attributeFilter: ["style", "class"],
+        });
+      }
+      measure();
+    };
+    const children = new MutationObserver(watch);
+    watch();
+    return () => {
+      resize.disconnect();
+      children.disconnect();
+      frame.style.removeProperty("--timeline-aside-width");
+      element.removeAttribute("data-aside-docked");
+    };
+  }, [hasAside]);
+  const hasTrailing = !!trailing;
   const listMounted = width > 0;
   useLayoutEffect(() => {
     const element = scroller.current;
     const box = trailingBox.current;
     // The box mounts with `trailing`, the list once the scroller has a width.
-    if ((!hasTrailing && !hasAside) || !listMounted || !element) return;
-    if ((hasTrailing && !box) || typeof ResizeObserver === "undefined") return;
+    if (!hasTrailing || !listMounted || !element || !box) return;
+    if (typeof ResizeObserver === "undefined") return;
     const hold = () => {
-      const height = box?.getBoundingClientRect().height ?? 0;
+      const height = box.getBoundingClientRect().height;
       // End the scroll range on a whole pixel. Integer scroll extents would
       // otherwise stop short of a fractional end, lifting the content's
       // bottom-stuck controls by up to a pixel at the end of the range.
-      const above = box?.previousElementSibling?.getBoundingClientRect().bottom;
-      if (box && above !== undefined) {
+      const above = box.previousElementSibling?.getBoundingClientRect().bottom;
+      if (above !== undefined) {
         const end =
           above -
           element.getBoundingClientRect().top +
@@ -1129,16 +1174,15 @@ function Timeline({
         )
           box.style.marginTop = `${snap}px`;
       }
-      const card = box ? Math.max(0, height - latestRest.current) : 0;
-      if (box && card !== cardExtra.current) box.style.bottom = `${-card}px`;
-      cardExtra.current = card;
-      const extra = card + (asideRange.current?.(card) ?? 0);
-      trailingExtra.current = extra;
-      if (box)
-        element.style.setProperty(
-          "--timeline-trailing-rest",
-          `${height - card}px`,
-        );
+      const extra = Math.max(0, height - latestRest.current);
+      if (extra !== trailingExtra.current) {
+        trailingExtra.current = extra;
+        box.style.bottom = `${-extra}px`;
+      }
+      element.style.setProperty(
+        "--timeline-trailing-rest",
+        `${height - extra}px`,
+      );
       // A send or Jump to latest makes the reader follow again.
       const target = toggleTarget(toggleScroll.current, intent.current);
       const toggling = target !== undefined;
@@ -1165,12 +1209,12 @@ function Timeline({
     hold();
     holdTrailing.current = hold;
     const resize = new ResizeObserver(hold);
-    if (box) resize.observe(box);
+    resize.observe(box);
     resize.observe(element);
     if (activityTail.current) resize.observe(activityTail.current);
     // Virtua commits the rows' height to the list's style.
     const rows = new MutationObserver(hold);
-    const list = transcriptBox.current?.querySelector(":scope > ol");
+    const list = element.querySelector(":scope > ol");
     if (list)
       rows.observe(list, { attributes: true, attributeFilter: ["style"] });
     return () => {
@@ -1179,151 +1223,11 @@ function Timeline({
       holdTrailing.current = undefined;
       toggleScroll.current = undefined;
       trailingExtra.current = 0;
-      cardExtra.current = 0;
       trailingPlace.current = undefined;
       setTrailingExpanded(false);
       element.style.removeProperty("--timeline-trailing-rest");
     };
-  }, [hasTrailing, hasAside, listMounted]);
-  // The transcript, and the composer below it in the same column, leave the
-  // aside's docked width beside them. A plugin's overlay, positioned out of
-  // flow, takes none.
-  useLayoutEffect(() => {
-    const element = scroller.current?.parentElement;
-    const frame = asideFrame.current;
-    if (!hasAside || !element || !frame) return;
-    if (typeof ResizeObserver === "undefined") return;
-    const measure = () => {
-      let width = 0;
-      for (const child of frame.children) {
-        const position = getComputedStyle(child).position;
-        if (position !== "absolute" && position !== "fixed")
-          width += child.getBoundingClientRect().width;
-      }
-      element.style.setProperty("--timeline-aside-width", `${width}px`);
-    };
-    const resize = new ResizeObserver(measure);
-    const watch = () => {
-      resize.disconnect();
-      resize.observe(frame);
-      for (const child of frame.children) resize.observe(child);
-      measure();
-    };
-    watch();
-    const children = new MutationObserver(watch);
-    children.observe(frame, { childList: true });
-    return () => {
-      resize.disconnect();
-      children.disconnect();
-      element.style.removeProperty("--timeline-aside-width");
-    };
-  }, [hasAside]);
-  // The aside is two-way sticky. Its frame is sticky with both insets at the
-  // viewport height less its own, so the browser keeps it between top-visible
-  // and bottom-visible. A spacer below it ends its place in the flow where it
-  // shows, measured from the end of the transcript, so rows landing or
-  // measuring above the reader leave it in place. The browser then moves it
-  // with the transcript and sticks it at either edge; after each scroll the
-  // spacer adopts where it shows, so a reversal moves it at once.
-  // Past the transcript's end the transcript stays pinned and a range as long
-  // as the aside still has below the fold lets only the aside move. That range
-  // joins the trailing content's range past the latest message.
-  useLayoutEffect(() => {
-    const element = scroller.current;
-    const transcript = transcriptBox.current;
-    const spacer = asideSpacer.current;
-    const frame = asideFrame.current;
-    if (!hasAside || !element || !transcript || !spacer || !frame) return;
-    if (typeof ResizeObserver === "undefined") return;
-    // The frame's top in the scrollport as last shown, with the scroll offset
-    // and transcript length it showed at.
-    let shown = 0;
-    let offset = element.scrollTop;
-    let length = transcript.offsetHeight;
-    let band = 0;
-    // How far the aside reaches below the fold at the transcript's end.
-    let reach = 0;
-    // Up to the latest message, the range past it is what the aside will
-    // still have below the fold once the trailing content has grown. Past
-    // it the range holds, so the reader's place in it does.
-    const range = (card: number) => {
-      const end = transcript.offsetHeight - element.clientHeight;
-      if (element.scrollTop <= Math.max(0, end - card) + 1)
-        asideExtra.current = Math.max(0, Math.ceil(reach - card));
-      element.style.setProperty(
-        "--timeline-aside-extra",
-        `${asideExtra.current}px`,
-      );
-      return asideExtra.current;
-    };
-    asideRange.current = range;
-    const place = () => {
-      const view = element.clientHeight;
-      frame.style.minHeight = `${view}px`;
-      const height = frame.offsetHeight;
-      const nextBand = view - height;
-      frame.style.top = `${nextBand}px`;
-      frame.style.bottom = `${nextBand}px`;
-      const bounds = element.getBoundingClientRect();
-      const nextOffset = element.scrollTop;
-      const nextLength = transcript.offsetHeight;
-      // A scroll since the last placement, whichever callback sees it first,
-      // moved the frame as the reader sees it. The timeline's own jump of more
-      // than a viewport with no rows landing, and layout without a scroll,
-      // move the rows under a still frame: both keep its place. So does a new
-      // band, from a resize or the aside's own height: the browser has not
-      // yet placed the frame in it.
-      if (
-        nextOffset !== offset &&
-        nextBand === band &&
-        (userScrolled.current ||
-          nextLength !== length ||
-          Math.abs(nextOffset - offset) <= view)
-      )
-        shown = frame.getBoundingClientRect().top - bounds.top;
-      band = nextBand;
-      shown = Math.min(0, Math.max(band, shown));
-      offset = nextOffset;
-      length = nextLength;
-      reach = shown + height - view;
-      const list = transcript.querySelector<HTMLElement>(":scope > ol");
-      if (list && handle.current)
-        setAsideKeep(
-          handle.current.findItemIndex(Math.max(0, list.offsetHeight - view)),
-        );
-      const before = asideExtra.current;
-      const extra = range(cardExtra.current);
-      element.style.setProperty(
-        "--timeline-transcript-pin",
-        `${Math.min(0, view - nextLength)}px`,
-      );
-      element.style.setProperty("--timeline-aside-view", `${view}px`);
-      // The spacer ends the frame's place at `shown`, from the column's end.
-      const column = frame.parentElement?.getBoundingClientRect();
-      if (column)
-        spacer.style.height = `${Math.min(
-          column.height - height,
-          Math.max(0, column.bottom - bounds.top - shown - height),
-        )}px`;
-      if (extra !== before) holdTrailing.current?.();
-    };
-    place();
-    element.addEventListener("scroll", place, { passive: true });
-    const resize = new ResizeObserver(place);
-    resize.observe(element);
-    resize.observe(frame);
-    resize.observe(transcript);
-    return () => {
-      element.removeEventListener("scroll", place);
-      resize.disconnect();
-      asideExtra.current = 0;
-      asideRange.current = undefined;
-      setAsideKeep(Number.POSITIVE_INFINITY);
-      element.style.removeProperty("--timeline-transcript-pin");
-      element.style.removeProperty("--timeline-aside-view");
-      element.style.removeProperty("--timeline-aside-extra");
-    };
-  }, [hasAside]);
+  }, [hasTrailing, listMounted]);
   const toggleTrailing = useCallback(() => {
     const element = scroller.current;
     if (!element) return;
@@ -1344,16 +1248,12 @@ function Timeline({
     const maxTop = element.scrollHeight - element.clientHeight;
     const height = trailingBox.current?.getBoundingClientRect().height ?? 0;
     const view = element.clientHeight;
-    // An aside's range lies past the transcript's own end.
-    const length = asideExtra.current
-      ? (transcriptBox.current?.offsetHeight ?? element.scrollHeight)
-      : element.scrollHeight;
     const gap = Math.max(
       0,
       Math.min(TRAILING_TOP_GAP, view / 3, view - latestRest.current),
     );
     const top = expand
-      ? Math.min(Math.max(0, length - view), length - height - gap)
+      ? Math.min(maxTop, element.scrollHeight - height - gap)
       : latestTop(element, extra);
     trailingPlace.current = expand
       ? { full: top >= maxTop, offset: top - latestTop(element, extra) }
@@ -1492,7 +1392,7 @@ function Timeline({
     trailingPlace.current = undefined;
     const tailHeight =
       (activityTail.current?.getBoundingClientRect().height ?? 0) +
-      trailingRest(trailingBox.current, cardExtra.current);
+      trailingRest(trailingBox.current, trailingExtra.current);
     handle.current.scrollToIndex(rows.length - 1, {
       align: "end",
       ...(tailHeight ? { offset: tailHeight } : {}),
@@ -1735,11 +1635,9 @@ function Timeline({
       !boundaryCandidate.awaitingRepair &&
       !(awayPending && !boundaryPending),
     trailing: () =>
-      trailingBox.current || hasAside
+      trailingBox.current
         ? {
-            top:
-              trailingBox.current?.getBoundingClientRect().top ??
-              Number.POSITIVE_INFINITY,
+            top: trailingBox.current.getBoundingClientRect().top,
             extra: trailingExtra.current,
           }
         : undefined,
@@ -2221,7 +2119,7 @@ function Timeline({
         const tailHeight =
           endIndex === rows.length - 1
             ? (activityTail.current?.getBoundingClientRect().height ?? 0) +
-              trailingRest(trailingBox.current, cardExtra.current)
+              trailingRest(trailingBox.current, trailingExtra.current)
             : 0;
         handle.current.scrollToIndex(endIndex, {
           align: "end",
@@ -2493,7 +2391,6 @@ function Timeline({
       data-buzz-launch-pending={launchPending ? "settling" : undefined}
       data-jump-visible={jumpVisible || undefined}
       data-trailing={trailing ? "" : undefined}
-      data-aside={aside ? "" : undefined}
       onWheel={(event) => gesture(event.deltaY < 0 && !event.ctrlKey)}
       onTouchStart={(event) => {
         touchY.current = event.touches[0]?.clientY;
@@ -2582,322 +2479,311 @@ function Timeline({
           );
           updateJumpToLatest(element);
         }
-        if (trailing || aside) trackTrailing(element);
+        if (trailing) trackTrailing(element);
         loadNearTop(element);
       }}
     >
-      <div ref={transcriptBox} className={styles.transcript}>
-        <div
-          ref={edge}
-          className={styles.edge}
-          data-history-space={reserveHistorySpace || undefined}
-          data-intro={!!shownIntro || undefined}
-        >
-          {shownIntro}
-          {edgeError && <span role="alert">{edgeError}</span>}
-          {window.historyLimited ? (
-            <span>History window limit reached</span>
-          ) : window.hasMore && queries.channels.cachedOnly ? (
-            <span>You can load older messages once Buzz reconnects.</span>
-          ) : window.hasMore &&
-            (historyControl === "button" || window.error) ? (
-            <Button
-              type="button"
-              disabled={window.loadingOlder}
-              onClick={() => {
-                queries.channels.loadOlder(channelId);
-                const after = queries.channels.window(channelId);
-                if (
-                  after.loadingOlder ||
-                  after.error ||
-                  after.status !== "ready"
-                )
-                  olderDemand.current = false;
-              }}
-            >
-              {window.loadingOlder
-                ? "Loading older…"
-                : window.error
-                  ? "Retry older messages"
-                  : "Load older messages"}
-            </Button>
-          ) : window.loadingOlder ? (
-            <span role="status">Loading older…</span>
-          ) : null}
-        </div>
-        <JumpToLatestButton
-          visible={jumpVisible}
-          newMessageCount={newMessageCount}
-          onClick={jumpToLatest}
-        />
-        {width > 0 && (
-          <Virtualizer
-            ref={handle}
-            scrollRef={scroller}
-            // Before Virtua measures its viewport there is no reading position
-            // to preserve; shifting then can freeze its initial empty range.
-            shift={prepend && !!handle.current?.viewportSize}
-            bufferSize={1600}
-            // Reflow must not evict the focused control or a row's open report.
-            keepMounted={keptIndices}
-            onResize={() => {
-              scheduleFill();
-              const element = scroller.current;
-              // Rows can measure after native scrollend without moving the
-              // scroll offset. Do not carry their estimated Y into the next hold.
-              if (
-                element &&
-                settled.current &&
-                edge.current?.clientWidth === size.width &&
-                element.clientHeight === size.height &&
-                !follow.current &&
-                !trailingPlace.current &&
-                !restoredAnchor.current &&
-                pendingRestore.current !== intent.current &&
-                heldReader.current?.intent !== intent.current
-              )
-                // A size change refreshes geometry, never bottom-follow intent.
-                savedPosition.current = {
-                  ...positionAt(element),
-                  bottom: false,
-                };
+      <div
+        ref={edge}
+        className={styles.edge}
+        data-history-space={reserveHistorySpace || undefined}
+        data-intro={!!shownIntro || undefined}
+      >
+        {shownIntro}
+        {edgeError && <span role="alert">{edgeError}</span>}
+        {window.historyLimited ? (
+          <span>History window limit reached</span>
+        ) : window.hasMore && queries.channels.cachedOnly ? (
+          <span>You can load older messages once Buzz reconnects.</span>
+        ) : window.hasMore && (historyControl === "button" || window.error) ? (
+          <Button
+            type="button"
+            disabled={window.loadingOlder}
+            onClick={() => {
+              queries.channels.loadOlder(channelId);
+              const after = queries.channels.window(channelId);
+              if (after.loadingOlder || after.error || after.status !== "ready")
+                olderDemand.current = false;
             }}
-            as="ol"
-            item="li"
-            startMargin={size.edgeHeight}
-            {...(initialCache.current ? { cache: initialCache.current } : {})}
           >
-            {rows.map((row, index) => {
-              const disclosure = disclosures.get(row.id);
-              const hidden = foldedActivity.has(row.id);
-              const previousRow =
-                row.audience === "agents"
-                  ? rows[index - 1]
-                  : publicMessageNeighbor(rows, index, -1);
-              const nextRow =
-                row.audience === "agents"
-                  ? rows[index + 1]
-                  : publicMessageNeighbor(rows, index, 1);
-              const day =
-                index === 0
-                  ? true
-                  : calendarDay(rows[index - 1]?.createdAt ?? 0) !==
-                    calendarDay(row.createdAt);
-              const toggleDisclosure = () => {
-                if (!disclosure) return;
-                intent.current++;
-                follow.current = false;
-                userScrolled.current = true;
-                restoredAnchor.current = undefined;
-                const next = new Set(expandedActivity);
-                for (const id of disclosure.ids) {
-                  if (disclosure.expanded) next.delete(id);
-                  else next.add(id);
-                }
-                setExpandedActivity(next);
-              };
-              const renderMessage = (row: ChannelMessage, inside = false) => {
-                return (
-                  <MessageRow
-                    representedAgents={stableActivity.agents(
-                      row.id,
-                      presentation.representedAgents.get(row.id),
-                    )}
-                    repliedAgents={stableActivity.agents(
-                      `replied:${row.id}`,
-                      presentation.repliedAgents.get(row.id),
-                    )}
-                    stoppedRequest={stoppedRequest(row.id)}
-                    recordedActivity={stableActivity.activity(
-                      row.id,
-                      presentation.byRow.get(row.id),
-                      "history",
-                    )}
-                    stackPrevious={
-                      inside ||
-                      (!!previousRow &&
-                        !foldedActivity.has(previousRow.id) &&
-                        continuesMessageGroup(previousRow, row))
-                    }
-                    stackNext={
-                      inside ||
-                      presentation.bubbleAnchors.has(row.id) ||
-                      (row.id === lastPublicMessage?.id &&
-                        row.audience !== "agents" &&
-                        !row.membership &&
-                        row.authorId === liveAgents[0]) ||
-                      (!!nextRow &&
-                        !foldedActivity.has(nextRow.id) &&
-                        continuesMessageGroup(row, nextRow))
-                    }
-                    session={queries}
-                    scope={scope}
-                    row={row}
-                    threadOpen={row.id === openThreadRootId}
-                    unread={queries.unread}
-                    extensions={extensions}
-                    profile={profiles.get(row.authorId)}
-                    participantProfiles={profiles}
-                    agentPubkeys={agentPubkeys}
-                    media={queries.media}
-                    onOpenLink={onOpenLink}
-                    canOpenLink={canOpenLink}
-                    onOpenThread={onOpenThread}
-                    startsThreads={startsThreads}
-                    {...(onOpenMediaReview ? { onOpenMediaReview } : {})}
-                    retry={queries.outbox?.retry}
-                    keepMounted={keepRowMounted}
-                    day={!inside && day && !disclosure}
-                  />
-                );
-              };
-              const newMessages = row.id === newMessageBoundaryId && (
-                <div className={styles.newMessages} data-new-messages-boundary>
-                  <hr
-                    className="sr-only select-none"
-                    aria-label="New messages"
-                  />
-                  <span className="select-none" aria-hidden="true">
-                    New messages
-                  </span>
-                </div>
-              );
-              // A relayed run starts at the first unread message, so the line goes above it.
-              const unreadRun = !!disclosure && "relayed" in disclosure;
+            {window.loadingOlder
+              ? "Loading older…"
+              : window.error
+                ? "Retry older messages"
+                : "Load older messages"}
+          </Button>
+        ) : window.loadingOlder ? (
+          <span role="status">Loading older…</span>
+        ) : null}
+      </div>
+      <JumpToLatestButton
+        visible={jumpVisible}
+        newMessageCount={newMessageCount}
+        onClick={jumpToLatest}
+      />
+      {width > 0 && (
+        <Virtualizer
+          ref={handle}
+          scrollRef={scroller}
+          // Before Virtua measures its viewport there is no reading position
+          // to preserve; shifting then can freeze its initial empty range.
+          shift={prepend && !!handle.current?.viewportSize}
+          bufferSize={1600}
+          // Reflow must not evict the focused control or a row's open report.
+          keepMounted={keptIndices}
+          onResize={() => {
+            scheduleFill();
+            const element = scroller.current;
+            // Rows can measure after native scrollend without moving the
+            // scroll offset. Do not carry their estimated Y into the next hold.
+            if (
+              element &&
+              settled.current &&
+              edge.current?.clientWidth === size.width &&
+              element.clientHeight === size.height &&
+              !follow.current &&
+              !trailingPlace.current &&
+              !restoredAnchor.current &&
+              pendingRestore.current !== intent.current &&
+              heldReader.current?.intent !== intent.current
+            )
+              // A size change refreshes geometry, never bottom-follow intent.
+              savedPosition.current = { ...positionAt(element), bottom: false };
+          }}
+          as="ol"
+          item="li"
+          startMargin={size.edgeHeight}
+          {...(initialCache.current ? { cache: initialCache.current } : {})}
+        >
+          {rows.map((row, index) => {
+            const disclosure = disclosures.get(row.id);
+            const hidden = foldedActivity.has(row.id);
+            const previousRow =
+              row.audience === "agents"
+                ? rows[index - 1]
+                : publicMessageNeighbor(rows, index, -1);
+            const nextRow =
+              row.audience === "agents"
+                ? rows[index + 1]
+                : publicMessageNeighbor(rows, index, 1);
+            const day =
+              index === 0
+                ? true
+                : calendarDay(rows[index - 1]?.createdAt ?? 0) !==
+                  calendarDay(row.createdAt);
+            const toggleDisclosure = () => {
+              if (!disclosure) return;
+              intent.current++;
+              follow.current = false;
+              userScrolled.current = true;
+              restoredAnchor.current = undefined;
+              const next = new Set(expandedActivity);
+              for (const id of disclosure.ids) {
+                if (disclosure.expanded) next.delete(id);
+                else next.add(id);
+              }
+              setExpandedActivity(next);
+            };
+            const renderMessage = (row: ChannelMessage, inside = false) => {
               return (
-                <Fragment key={row.id}>
-                  {unreadRun && newMessages}
-                  {disclosure && (
-                    <div
-                      className={styles.activityDisclosure}
-                      data-activity-group-id={disclosure.ids[0]}
-                    >
-                      {/* A relayed run lists its lines without their own dividers. */}
-                      {(!disclosure.expanded || "relayed" in disclosure) &&
-                        (() => {
-                          const first = rows.findIndex(
-                            (item) => item.id === disclosure.ids[0],
-                          );
-                          const before = rows[first - 1];
-                          return (
-                            (!before ||
-                              calendarDay(before.createdAt) !==
-                                calendarDay(row.createdAt)) && (
-                              <DayDivider createdAt={row.createdAt} />
-                            )
-                          );
-                        })()}
-                      {"relayed" in disclosure ? (
-                        <RelayedRunPreview
-                          session={queries}
-                          run={disclosure}
-                          renderHistory={(entry) => renderMessage(entry, true)}
-                          profiles={profiles}
-                          agentPubkeys={agentPubkeys}
-                          media={queries.media}
-                          expanded={disclosure.expanded}
-                          onToggle={toggleDisclosure}
-                          extensions={extensions}
-                          scope={scope}
-                          onOpenLink={onOpenLink}
-                        />
-                      ) : (
-                        <ActivityGroupPreview
-                          session={queries}
-                          group={disclosure}
-                          openActivity={onOpenLink}
-                          canOpenActivity={canOpenLink}
-                          renderHistory={(entry) => renderMessage(entry, true)}
-                          profiles={profiles}
-                          media={queries.media}
-                          expanded={disclosure.expanded}
-                          onToggle={toggleDisclosure}
-                        />
-                      )}
-                    </div>
+                <MessageRow
+                  representedAgents={stableActivity.agents(
+                    row.id,
+                    presentation.representedAgents.get(row.id),
                   )}
-                  {!unreadRun && newMessages}
-                  <ActivityExpansion
-                    open={!hidden && !containedOwners.has(row.id)}
-                    enabled={
-                      row.audience === "agents" || !!row.relayedFrom?.verified
-                    }
+                  repliedAgents={stableActivity.agents(
+                    `replied:${row.id}`,
+                    presentation.repliedAgents.get(row.id),
+                  )}
+                  stoppedRequest={stoppedRequest(row.id)}
+                  recordedActivity={stableActivity.activity(
+                    row.id,
+                    presentation.byRow.get(row.id),
+                    "history",
+                  )}
+                  stackPrevious={
+                    inside ||
+                    (!!previousRow &&
+                      !foldedActivity.has(previousRow.id) &&
+                      continuesMessageGroup(previousRow, row))
+                  }
+                  stackNext={
+                    inside ||
+                    presentation.bubbleAnchors.has(row.id) ||
+                    (row.id === lastPublicMessage?.id &&
+                      row.audience !== "agents" &&
+                      !row.membership &&
+                      row.authorId === liveAgents[0]) ||
+                    (!!nextRow &&
+                      !foldedActivity.has(nextRow.id) &&
+                      continuesMessageGroup(row, nextRow))
+                  }
+                  session={queries}
+                  scope={scope}
+                  row={row}
+                  threadOpen={row.id === openThreadRootId}
+                  unread={queries.unread}
+                  extensions={extensions}
+                  profile={profiles.get(row.authorId)}
+                  participantProfiles={profiles}
+                  agentPubkeys={agentPubkeys}
+                  media={queries.media}
+                  onOpenLink={onOpenLink}
+                  canOpenLink={canOpenLink}
+                  onOpenThread={onOpenThread}
+                  startsThreads={startsThreads}
+                  {...(onOpenMediaReview ? { onOpenMediaReview } : {})}
+                  retry={queries.outbox?.retry}
+                  keepMounted={keepRowMounted}
+                  day={!inside && day && !disclosure}
+                />
+              );
+            };
+            const newMessages = row.id === newMessageBoundaryId && (
+              <div className={styles.newMessages} data-new-messages-boundary>
+                <hr className="sr-only select-none" aria-label="New messages" />
+                <span className="select-none" aria-hidden="true">
+                  New messages
+                </span>
+              </div>
+            );
+            // A relayed run starts at the first unread message, so the line goes above it.
+            const unreadRun = !!disclosure && "relayed" in disclosure;
+            return (
+              <Fragment key={row.id}>
+                {unreadRun && newMessages}
+                {disclosure && (
+                  <div
+                    className={styles.activityDisclosure}
+                    data-activity-group-id={disclosure.ids[0]}
                   >
-                    {row.membership ? (
-                      <MembershipRow
-                        resolveName={resolveName}
-                        names={queries.names}
-                        row={row}
+                    {/* A relayed run lists its lines without their own dividers. */}
+                    {(!disclosure.expanded || "relayed" in disclosure) &&
+                      (() => {
+                        const first = rows.findIndex(
+                          (item) => item.id === disclosure.ids[0],
+                        );
+                        const before = rows[first - 1];
+                        return (
+                          (!before ||
+                            calendarDay(before.createdAt) !==
+                              calendarDay(row.createdAt)) && (
+                            <DayDivider createdAt={row.createdAt} />
+                          )
+                        );
+                      })()}
+                    {"relayed" in disclosure ? (
+                      <RelayedRunPreview
+                        session={queries}
+                        run={disclosure}
+                        renderHistory={(entry) => renderMessage(entry, true)}
                         profiles={profiles}
-                        viewer={viewer}
-                        media={queries.media}
                         agentPubkeys={agentPubkeys}
-                        day={day}
+                        media={queries.media}
+                        expanded={disclosure.expanded}
+                        onToggle={toggleDisclosure}
+                        extensions={extensions}
+                        scope={scope}
                         onOpenLink={onOpenLink}
-                        canOpenLink={canOpenLink}
                       />
                     ) : (
-                      renderMessage(row)
+                      <ActivityGroupPreview
+                        session={queries}
+                        group={disclosure}
+                        openActivity={onOpenLink}
+                        canOpenActivity={canOpenLink}
+                        renderHistory={(entry) => renderMessage(entry, true)}
+                        profiles={profiles}
+                        media={queries.media}
+                        expanded={disclosure.expanded}
+                        onToggle={toggleDisclosure}
+                      />
                     )}
-                  </ActivityExpansion>
-                </Fragment>
-              );
-            })}
-          </Virtualizer>
-        )}
-        {!rows.length &&
-          !shownIntro &&
-          !window.hasMore &&
-          window.status === "ready" &&
-          !window.error &&
-          !window.loadingOlder && (
-            <div className={styles.emptyConversation}>
-              <EmptyState
-                icon={<ChatCircleIcon />}
-                title="No messages yet."
-                description={
-                  composerless ? undefined : "Start the conversation below."
-                }
-              />
-            </div>
-          )}
-        <div ref={activityTail}>
-          <AgentConnectionSetup
-            key={channelId}
-            session={queries}
-            rows={window.rows}
-            channel={queries.channels.get?.(channelId)}
-          />
-          <TypingIndicator
-            audience="agents"
-            inFlow
-            session={queries}
-            channelId={channelId}
-            previousAuthor={
-              lastPublicMessage && !lastPublicMessage.membership
-                ? lastPublicMessage.authorId
-                : undefined
-            }
-            openActivity={onOpenLink}
-            canOpenActivity={canOpenLink}
-          />
-          <div className={styles.timelineEnd} aria-hidden="true" />
-        </div>
-        {trailing && (
-          <div ref={trailingBox} className={styles.trailing}>
-            {trailing.content(trailingState)}
+                  </div>
+                )}
+                {!unreadRun && newMessages}
+                <ActivityExpansion
+                  open={!hidden && !containedOwners.has(row.id)}
+                  enabled={
+                    row.audience === "agents" || !!row.relayedFrom?.verified
+                  }
+                >
+                  {row.membership ? (
+                    <MembershipRow
+                      resolveName={resolveName}
+                      names={queries.names}
+                      row={row}
+                      profiles={profiles}
+                      viewer={viewer}
+                      media={queries.media}
+                      agentPubkeys={agentPubkeys}
+                      day={day}
+                      onOpenLink={onOpenLink}
+                      canOpenLink={canOpenLink}
+                    />
+                  ) : (
+                    renderMessage(row)
+                  )}
+                </ActivityExpansion>
+              </Fragment>
+            );
+          })}
+        </Virtualizer>
+      )}
+      {!rows.length &&
+        !shownIntro &&
+        !window.hasMore &&
+        window.status === "ready" &&
+        !window.error &&
+        !window.loadingOlder && (
+          <div className={styles.emptyConversation}>
+            <EmptyState
+              icon={<ChatCircleIcon />}
+              title="No messages yet."
+              description={
+                composerless ? undefined : "Start the conversation below."
+              }
+            />
           </div>
         )}
+      <div ref={activityTail}>
+        <AgentConnectionSetup
+          key={channelId}
+          session={queries}
+          rows={window.rows}
+          channel={queries.channels.get?.(channelId)}
+        />
+        <TypingIndicator
+          audience="agents"
+          inFlow
+          session={queries}
+          channelId={channelId}
+          previousAuthor={
+            lastPublicMessage && !lastPublicMessage.membership
+              ? lastPublicMessage.authorId
+              : undefined
+          }
+          openActivity={onOpenLink}
+          canOpenActivity={canOpenLink}
+        />
+        <div className={styles.timelineEnd} aria-hidden="true" />
       </div>
-      {aside && (
-        <div className={styles.asideColumn}>
-          <div ref={asideFrame} className={styles.asideFrame}>
-            {aside}
-          </div>
-          <div ref={asideSpacer} />
+      {trailing && (
+        <div ref={trailingBox} className={styles.trailing}>
+          {trailing.content(trailingState)}
         </div>
       )}
     </section>
   );
-  return <MessageContextMenus>{feed}</MessageContextMenus>;
+  const menus = <MessageContextMenus>{feed}</MessageContextMenus>;
+  return aside ? (
+    <>
+      {menus}
+      <div ref={asideFloat} className={styles.aside}>
+        {aside}
+      </div>
+    </>
+  ) : (
+    menus
+  );
 }

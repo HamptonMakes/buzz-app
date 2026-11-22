@@ -340,8 +340,11 @@ Add `"host"` to `inject`, then:
   `aside` renders beside the main tab's reader, such as a dashboard, when
   `ctx.conversation.workspaceSlots?.aside === true`; an older host ignores it.
   It sets its own width, and its offset parent spans the reader. Beside a
-  channel timeline the reader's scroller moves it with the transcript, so give
-  a docked aside no height or overflow of its own. In a narrow reader, position
+  channel timeline it floats at the reader's end edge and stays put while the
+  history scrolls. Docked, give it `max-height:
+  var(--workspace-aside-max-height)` and scroll its content in a region of its
+  own, such as `min-height: 0; overflow-y: auto`; keep popovers outside that
+  region so they can escape it over the history. In a narrow reader, position
   an overlay out of flow, which takes no width, and let it scroll itself. A
   thread target shows the aside after the reader, without scrolling it.
   `actions` supplies

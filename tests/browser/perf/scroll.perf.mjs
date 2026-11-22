@@ -15,9 +15,7 @@ for (const [name, distance, speed, count] of [
         const scroller = page.locator(timeline("alpha"));
         let released = 0;
         if (name === "scroll-long") {
-          // The history's edge leads the transcript.
-          const edge = ":scope > div:first-child > div:first-child";
-          const older = scroller.locator(`${edge} button`);
+          const older = scroller.locator(":scope > div:first-child button");
           for (let pageIndex = 0; pageIndex < 30; pageIndex++) {
             while (released < app.pending.length)
               app.pending[released++].release();
@@ -27,14 +25,16 @@ for (const [name, distance, speed, count] of [
             await expect
               .poll(
                 () =>
-                  scroller.evaluate((element, selector) => {
-                    const edge = element.querySelector(selector);
+                  scroller.evaluate((element) => {
+                    const edge = element.querySelector(
+                      ":scope > div:first-child",
+                    );
                     const button = edge.querySelector("button");
                     return button
                       ? !button.disabled &&
                           button.textContent === "Load older messages"
                       : !edge.querySelector('[role="status"]');
-                  }, edge),
+                  }),
                 { message: "older page completes or exhausts history" },
               )
               .toBe(true);
