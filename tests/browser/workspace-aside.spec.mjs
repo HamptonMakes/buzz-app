@@ -51,6 +51,7 @@ const layout = (page) =>
       history: box(element),
       // The scrollport's end edge, left of a classic scrollbar.
       scrollport: element.getBoundingClientRect().left + element.clientWidth,
+      scrollbar: element.offsetWidth - element.clientWidth,
       list: box(element.querySelector("ol")),
       aside: box(widget),
       frame: box(element.parentElement),
@@ -90,12 +91,15 @@ test("a docked aside floats beside the history and composer, which leave it its 
   expect(at.aside.width).toBeGreaterThan(300);
   expect(at.list.right).toBeLessThanOrEqual(at.aside.left + 1);
   expect(at.composer.right).toBeLessThanOrEqual(at.aside.left + 1);
-  // The composer stays centered under the history's narrowed column.
+  // The composer stays centered under the history's narrowed column. As
+  // without an aside, it spans the frame and the list the scrollport, so a
+  // classic scrollbar moves the list's center by half its width.
   expect(
     Math.abs(
       at.composer.left +
         at.composer.width / 2 -
-        (at.list.left + at.list.width / 2),
+        (at.list.left + at.list.width / 2) -
+        at.scrollbar / 2,
     ),
   ).toBeLessThanOrEqual(2);
   expect(Math.abs(at.aside.right - at.scrollport)).toBeLessThanOrEqual(1);
