@@ -497,6 +497,7 @@ export function SoloInventory({
   return (
     <nav
       className={styles.sidebarContents}
+      data-sidebar-card-group=""
       aria-label={`${regions.regions.find((region) => region.source && !region.hidden)?.title ?? "Solo"} conversations`}
     >
       {renderContents ? (

@@ -223,6 +223,9 @@
   height: 100%;
   min-height: 0;
   --affordance-panel-hover: var(--affordance-backdrop-hover);
+  /* Every card, Favorites included, sits this gap from the next, tighter than
+     the panel gap at the app's edge. */
+  --sidebar-card-gap: var(--space-1);
 }
 /* Cards line up with the conversation: their tops meet, and they sit a panel
    gap from the window's edge and from the conversation. */
@@ -231,10 +234,14 @@
 .cards .sidebar .sidebarFilter {
   padding-block-start: 0;
 }
-/* Cards space themselves; the list's row gap would add to every card gap, and
-   twice around the hidden new-workspace slot. */
-.cards .sidebar .channelListContent {
-  gap: 0;
+/* The list owns the space between cards, so a card spaces correctly however
+   it is wrapped. Slots are display: contents; a box that groups several cards
+   marks itself data-sidebar-card-group and passes the same gap on. */
+.cards .sidebar .channelListContent,
+.cards .sidebar [data-sidebar-card-group] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sidebar-card-gap);
 }
 /* The shell already keeps a panel gap on both sides of the sidebar. */
 .cards .sidebar {

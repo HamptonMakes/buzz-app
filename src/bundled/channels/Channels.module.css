@@ -251,21 +251,11 @@
 .unreadEdge[data-beside-action] :is(.unreadDmPreviews, .unreadEdgeSuffix) {
   display: none;
 }
+/* Sections carry no outside margin: the sidebar's list spaces its cards
+   (SidebarFrame's --sidebar-card-gap), however each card is wrapped. */
 .channelSection {
   position: relative;
   flex-shrink: 0;
-  --sidebar-section-gap: var(--space-2);
-}
-.channelSection[data-sidebar-section="starred"] {
-  --sidebar-section-gap: var(--space-4);
-}
-.channelSection + .channelSection {
-  margin-top: var(--sidebar-section-gap);
-}
-[data-sidebar-slot]:has(> .channelSection)
-  ~ [data-sidebar-slot]
-  > .channelSection:first-child {
-  margin-top: var(--sidebar-section-gap);
 }
 .channelSection[data-drop-target] {
   border-radius: var(--radius-row);
@@ -280,10 +270,9 @@
   padding: var(--space-1) var(--space-2);
   --affordance-panel-hover: var(--affordance-sidebar-hover);
 }
-/* Every card, Favorites included, sits the same gap from the one before it,
-   tighter than the panel gap around the app's edge. */
+/* Drop lines sit in the middle of the list's gap between cards. */
 [data-sidebar-cards] .channelSection {
-  --sidebar-section-gap: var(--space-1);
+  --sidebar-section-gap: var(--sidebar-card-gap);
   /* Cards slide smoothly to open a landing gap. */
   transition: translate var(--duration-fast) var(--easing-state);
 }
