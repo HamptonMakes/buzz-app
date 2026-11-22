@@ -34,7 +34,7 @@ type ConversationTabProps = {
   intro?: ReactNode;
   /** Only the channel timeline shows it, not a thread. */
   trailing?: ConversationWorkspaceProps["trailing"];
-  /** Only the channel timeline shows it, in its scroller. */
+  /** The channel timeline shows it in its scroller; a thread, after itself. */
   aside?: ReactNode;
   subthreadId?: string | undefined;
   latestRequest?: AbortSignal | undefined;
@@ -155,6 +155,16 @@ export function ConversationTab({
       latest.current.openThread(messageId, rootId, intent),
     [],
   );
+  // A message target that resolves to a thread keeps the aside after it.
+  const withAside = (thread: ReactNode) =>
+    aside ? (
+      <div className={styles.threadWithAside}>
+        {thread}
+        {aside}
+      </div>
+    ) : (
+      thread
+    );
   return (
     <ConversationChannel
       session={session}
@@ -200,17 +210,19 @@ export function ConversationTab({
             parent={parent}
           />
         ) : target && inTimeline === false ? (
-          <ConversationThread
-            intro={intro}
-            active={active}
-            messageId={target}
-            retainThread
-            tabbed
-            revealSelected
-            revealRequest={revealRequest}
-            close={close}
-            parent={parent}
-          />
+          withAside(
+            <ConversationThread
+              intro={intro}
+              active={active}
+              messageId={target}
+              retainThread
+              tabbed
+              revealSelected
+              revealRequest={revealRequest}
+              close={close}
+              parent={parent}
+            />,
+          )
         ) : (
           <SoloColumn enabled={soloConversation}>
             <ChannelBody

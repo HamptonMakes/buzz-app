@@ -630,6 +630,29 @@ it("a conversation tab opens a reply at its message as the thread", () => {
   expect(screen.queryByText("Conversation content")).toBeNull();
 });
 
+it("a message target that resolves to a thread keeps the workspace's aside after it", () => {
+  const c = openingAt([{ id: "root" }, { id: "reply", threadRootId: "root" }]);
+  render(
+    <ConversationTab
+      {...c.props}
+      tab={{
+        id: "conversation:beta",
+        kind: "conversation",
+        channelId: "beta",
+        messageId: "reply",
+        revealRequest: 1,
+      }}
+      aside={<section aria-label="Plan" />}
+    />,
+  );
+  c.settle();
+  const thread = screen.getByText("Thread content");
+  const plan = screen.getByRole("region", { name: "Plan" });
+  expect(
+    thread.compareDocumentPosition(plan) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
+
 it.each(["conversation", "thread"] as const)(
   "only a channel timeline shows the workspace's trailing content (%s)",
   (kind) => {
