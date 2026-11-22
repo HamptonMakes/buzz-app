@@ -1070,11 +1070,6 @@ html[data-keyboard-navigation]
      inside the card, by focus or otherwise. */
   overflow: clip;
 }
-/* A cut-short card feathers its last visible row into the surface, beside the
-   grip's "more below" bar, with the shared scroll fade. */
-.cardRows:has([data-card-clipped]) {
-  mask-image: var(--scroll-fade-end);
-}
 /* Holds the rows and the line for unread past the edge. */
 /* A card shown as icons: every row as an identity tile, wrapping. */
 .cardTiles {
