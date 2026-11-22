@@ -951,7 +951,9 @@ function Timeline({
     const element = scroller.current;
     if (!tail || !element || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
-      if (settled.current && follow.current) {
+      // Trailing content's hold measures it first: its extent may be stale.
+      if (holdTrailing.current) holdTrailing.current();
+      else if (settled.current && follow.current) {
         layoutCorrection.current = true;
         element.scrollTop = latestTop(element, trailingExtra.current);
       }
