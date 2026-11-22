@@ -138,6 +138,7 @@ export type Conversation = {
    * a slot's flag, or the whole object, and ignores that prop. */
   readonly workspaceSlots?: Readonly<{
     trailing?: true;
+    aside?: true;
   }>;
   /** Solo chat icons; the sidebar shows the first one. */
   chatIcons: ContributionReader<ChatIcon>;
@@ -223,6 +224,7 @@ export class ConversationService extends Service implements Conversation {
   readonly ui: Conversation["ui"];
   readonly workspaceSlots = Object.freeze({
     trailing: true,
+    aside: true,
   });
   constructor(ctx: Context) {
     super(ctx, "conversation");

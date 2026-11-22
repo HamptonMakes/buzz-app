@@ -375,6 +375,9 @@ export function PageTabs({
       : 1,
   );
   const primaryTarget = workspace?.target;
+  // The channel timeline scrolls the aside with the transcript; a thread
+  // target keeps it beside the reader.
+  const asideInReader = !primaryTarget?.threadId;
   const latestRequest = primaryTarget?.messageId
     ? undefined
     : workspace?.latestRequest;
@@ -528,7 +531,7 @@ export function PageTabs({
                   ),
                   actions: workspace?.actions,
                   content: workspace ? (
-                    <div className={styles.conversation}>
+                    <div className={styles.workspaceRow}>
                       <div className={styles.workspaceReader}>
                         {primaryTab &&
                         primaryChannel &&
@@ -538,6 +541,7 @@ export function PageTabs({
                             tab={primaryTab}
                             intro={workspace.intro}
                             trailing={workspace.trailing}
+                            aside={asideInReader ? workspace.aside : undefined}
                             subthreadId={primaryTarget?.subthreadId}
                             latestRequest={latestRequest}
                             active={
@@ -574,6 +578,7 @@ export function PageTabs({
                           </p>
                         )}
                       </div>
+                      {!asideInReader && workspace.aside}
                     </div>
                   ) : (
                     children(open, close, isOpen)

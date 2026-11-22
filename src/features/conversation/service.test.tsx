@@ -114,6 +114,17 @@ it("tells plugins that ui.Workspace renders trailing content", async () => {
   h.runtime.reconcile([h.plugin]);
   await vi.waitFor(() => expect(slots).toHaveProperty("trailing", true));
 });
+it("tells plugins that ui.Workspace renders an aside", async () => {
+  let slots: unknown;
+  const h = harness({
+    inject: ["conversation"],
+    apply(ctx) {
+      slots = ctx.conversation.workspaceSlots;
+    },
+  });
+  h.runtime.reconcile([h.plugin]);
+  await vi.waitFor(() => expect(slots).toHaveProperty("aside", true));
+});
 it("bundled Emoji really registers a picker and a renderer, including reaction metadata", async () => {
   const h = harness(emoji);
   h.runtime.reconcile([h.plugin]);

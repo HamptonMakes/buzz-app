@@ -317,7 +317,7 @@ Add `"host"` to `inject`, then:
   Check that it exists before use. Channels supplies it through
   `registerWorkspace`, with the same provider lifetime as `ui.Tabs`.
   Set the page's `layout` to `"workspace"`. Pass
-  `{ id, session, scope, target, label, intro?, trailing?, actions?, detail?, latestRequest? }`.
+  `{ id, session, scope, target, label, intro?, aside?, trailing?, actions?, detail?, latestRequest? }`.
   Set `target` to `{ channelId, threadId?, subthreadId?, messageId? }`. Omit
   `threadId` for the channel timeline. Supply a thread ID to show the thread.
   Add `subthreadId` to show and compose within a branch of that thread.
@@ -337,6 +337,13 @@ Add `"host"` to `inject`, then:
   give that element an opaque background, and draw the content's outline with
   a box shadow rather than a bottom border, which would show below the controls
   only once the content has fully grown.
+  `aside` renders beside the main tab's reader, such as a dashboard, when
+  `ctx.conversation.workspaceSlots?.aside === true`; an older host ignores it.
+  It sets its own width, and its offset parent spans the reader. Beside a
+  channel timeline the reader's scroller moves it with the transcript, so give
+  a docked aside no height or overflow of its own. In a narrow reader, position
+  an overlay out of flow, which takes no width, and let it scroll itself. A
+  thread target shows the aside after the reader, without scrolling it.
   `actions` supplies
   entries in the header's three-dot menu and the tab's context menu, with
   `{ label, run() }`. `detail: { target, rootId? }` initially selects a panel

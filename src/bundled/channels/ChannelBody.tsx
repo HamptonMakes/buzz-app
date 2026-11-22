@@ -16,6 +16,7 @@ export const ChannelBody = memo(function ChannelBody({
   cached,
   intro,
   trailing,
+  aside,
   latestRequest,
   viewer,
   revealMessageId,
@@ -31,6 +32,7 @@ export const ChannelBody = memo(function ChannelBody({
   cached: boolean;
   intro?: ReactNode;
   trailing?: ChannelTimelineProps["trailing"];
+  aside?: ReactNode;
   latestRequest?: AbortSignal | undefined;
   viewer?: string | undefined;
   navigation?: PageNavigation | undefined;
@@ -130,6 +132,7 @@ export const ChannelBody = memo(function ChannelBody({
       continuityKey={continuityKey}
       intro={intro}
       trailing={trailing}
+      aside={aside}
       latestRequest={latestRequest}
       viewer={viewer}
       window={window}

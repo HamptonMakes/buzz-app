@@ -33,8 +33,10 @@ vi.mock("./ConversationTab", () => ({
     parent,
     intro,
     trailing,
+    aside,
   }: {
     intro?: import("react").ReactNode;
+    aside?: import("react").ReactNode;
     trailing?: { content(state: object): import("react").ReactNode };
     tab: Tab;
     channel: { name: string };
@@ -53,6 +55,7 @@ vi.mock("./ConversationTab", () => ({
       {intro}
       {tab.kind} in {channel.name}
       {trailing?.content({ expanded: false, toggle() {} })}
+      {aside}
       {!visit && " unvisited"}
       {onResolvedRoot && (
         <button type="button" onClick={() => onResolvedRoot("older")}>
@@ -470,6 +473,46 @@ it("a workspace gives its trailing content to its main reader", () => {
     />,
   );
   expect(screen.getByText("Decision card")).toBeVisible();
+});
+
+it("a workspace gives a channel reader its aside", () => {
+  const f = fixture();
+  cleanup();
+  render(
+    <ConversationWorkspace
+      id="task"
+      session={f.session}
+      scope="origin:viewer"
+      target={{ channelId: "alpha" }}
+      label="Task"
+      host={f.host}
+      aside={<aside aria-label="Task dashboard" />}
+    />,
+  );
+  const reader = screen.getByText("conversation in alpha", { exact: false });
+  const aside = screen.getByRole("complementary", { name: "Task dashboard" });
+  expect(reader).toContainElement(aside);
+});
+
+it("a workspace places a thread reader's aside after it, in the reader's row", () => {
+  const f = fixture();
+  cleanup();
+  render(
+    <ConversationWorkspace
+      id="task"
+      session={f.session}
+      scope="origin:viewer"
+      target={{ channelId: "alpha", threadId: "root" }}
+      label="Task"
+      host={f.host}
+      aside={<aside aria-label="Task dashboard" />}
+    />,
+  );
+  const reader = screen.getByText("thread in alpha", { exact: false });
+  const aside = screen.getByRole("complementary", { name: "Task dashboard" });
+  expect(reader).not.toContainElement(aside);
+  expect(reader.parentElement?.nextElementSibling).toBe(aside);
+  expect(screen.getByRole("tabpanel")).toContainElement(aside);
 });
 
 it.each([false, true])(

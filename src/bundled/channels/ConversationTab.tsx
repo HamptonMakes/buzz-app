@@ -34,6 +34,8 @@ type ConversationTabProps = {
   intro?: ReactNode;
   /** Only the channel timeline shows it, not a thread. */
   trailing?: ConversationWorkspaceProps["trailing"];
+  /** Only the channel timeline shows it, in its scroller. */
+  aside?: ReactNode;
   subthreadId?: string | undefined;
   latestRequest?: AbortSignal | undefined;
   active: boolean;
@@ -63,6 +65,7 @@ export function ConversationTab({
   tab,
   intro,
   trailing,
+  aside,
   subthreadId,
   latestRequest,
   active,
@@ -213,6 +216,7 @@ export function ConversationTab({
             <ChannelBody
               intro={intro}
               trailing={trailing}
+              aside={aside}
               latestRequest={active ? latestRequest : undefined}
               viewer={session.viewer}
               cached={!!channel.cached}

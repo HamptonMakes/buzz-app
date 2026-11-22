@@ -2,6 +2,7 @@
 import { soloRegionFixture } from "./solo-region-fixture";
 import { companionPlugins } from "./companion-fixture";
 import { trailingBrief, trailingCard } from "./trailing-fixture";
+import { AsideWidget, type AsideSize } from "./aside-fixture";
 import * as shortcutCounter from "../../examples/plugins/shortcut-counter/plugin.js";
 import shortcutManifest from "../../examples/plugins/shortcut-counter/manifest.json";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -475,13 +476,15 @@ export const fixturePlugins: readonly BundledPlugin[] = [
             route?.kind === "page"
               ? (route.route?.params as PageTabTarget & {
                   trailing?: "none" | "short" | "long";
+                  aside?: AsideSize;
                 })
               : undefined;
           const trailing = params?.trailing;
+          const asideSize = params?.aside;
           // The route's own target, kept stable across renders.
           const target = useMemo(() => {
             if (!params) return undefined;
-            const { trailing: _, ...target } = params;
+            const { trailing: _, aside: __, ...target } = params;
             return target;
           }, [params]);
           // Approving removes the card in place, as a plugin's decision does.
@@ -530,6 +533,9 @@ export const fixturePlugins: readonly BundledPlugin[] = [
                   label="Transcript fixture"
                   target={target as PageTabTarget}
                   {...(card ? { trailing: card } : {})}
+                  {...(asideSize
+                    ? { aside: <AsideWidget size={asideSize} /> }
+                    : {})}
                   latestRequest={
                     request && request.opening === opening
                       ? request.signal
