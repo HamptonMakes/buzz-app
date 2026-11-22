@@ -1185,10 +1185,11 @@ function Timeline({
       element.style.removeProperty("--timeline-trailing-rest");
     };
   }, [hasTrailing, hasAside, listMounted]);
-  // The transcript leaves the aside's docked width beside it. A
-  // plugin's overlay, positioned out of flow, takes none.
+  // The transcript, and the composer below it in the same column, leave the
+  // aside's docked width beside them. A plugin's overlay, positioned out of
+  // flow, takes none.
   useLayoutEffect(() => {
-    const element = scroller.current;
+    const element = scroller.current?.parentElement;
     const frame = asideFrame.current;
     if (!hasAside || !element || !frame) return;
     if (typeof ResizeObserver === "undefined") return;

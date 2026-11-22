@@ -802,6 +802,19 @@ html[data-keyboard-navigation] .attachmentImage:focus-visible {
   flex-direction: column;
   flex-shrink: 0;
   min-width: 0;
+  padding-inline: var(--composer-aside-inset)
+    calc(var(--timeline-aside-width, 0px) + var(--composer-aside-inset));
+}
+/* Under a channel timeline with a docked aside, the composer and its
+   accessories take the transcript's width and inset, never the aside's. The
+   inset is the difference from the composer's own, and none with no aside. */
+.composerContext,
+.composer {
+  --composer-aside-inset: clamp(
+    0px,
+    calc(var(--timeline-aside-width, 0px) * 1000),
+    calc(var(--space-panel-inset) - var(--space-4))
+  );
 }
 /* Soften the scroll edge without reserving a blank strip above the composer. */
 :is(.feed, .threadHistory)[data-jump-visible] + .composerContext::before {
@@ -826,7 +839,18 @@ html[data-keyboard-navigation] .attachmentImage:focus-visible {
   border-radius: calc(var(--radius-icon-button) + var(--space-1h) + 1px);
   box-shadow: var(--shadow-xs);
   padding: var(--space-3) var(--space-1h) var(--space-1h);
-  width: min(calc(100% - 2 * var(--space-4)), var(--buzz-message-width, 52rem));
+  /* Beside a docked aside: narrower by it, centered in what remains. */
+  --composer-column: calc(
+    100% -
+    var(--timeline-aside-width, 0px) -
+    2 *
+    var(--composer-aside-inset)
+  );
+  inset-inline-start: calc(var(--timeline-aside-width, 0px) / -2);
+  width: min(
+    calc(var(--composer-column) - 2 * var(--space-4)),
+    var(--buzz-message-width, 52rem)
+  );
   margin: 0 auto var(--space-4);
   display: flex;
   flex-shrink: 0;
@@ -851,7 +875,7 @@ html[data-keyboard-navigation] .attachmentImage:focus-visible {
 }
 /* The composer spans the same full width as a compact list. */
 :where(html[data-message-density="compact"]) .composer {
-  width: calc(100% - 2 * var(--space-4));
+  width: calc(var(--composer-column) - 2 * var(--space-4));
 }
 .empty {
   padding: var(--space-8) var(--space-4);
@@ -869,7 +893,7 @@ html[data-keyboard-navigation] .attachmentImage:focus-visible {
   }
   .composer {
     width: min(
-      calc(100% - 2 * var(--space-3)),
+      calc(var(--composer-column) - 2 * var(--space-3)),
       var(--buzz-message-width, 52rem)
     );
     margin: 0 auto var(--space-3);
