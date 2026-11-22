@@ -293,6 +293,12 @@ export function ChannelTimeline(props: ChannelTimelineProps) {
     />
   );
 }
+type ToggleScroll = { top: number; intent: number };
+// The toggle's target while its intent is still the latest.
+function toggleTarget(scroll: ToggleScroll | undefined, intent: number) {
+  return scroll?.intent === intent ? scroll.top : undefined;
+}
+
 function Timeline({
   channelId,
   extensions,
@@ -1045,9 +1051,10 @@ function Timeline({
   // How far above the latest message a follower last scrolled: within the
   // follow threshold, layout keeps that gap rather than undoing the scroll.
   const followGap = useRef(0);
-  // Where the toggle's smooth scroll is going, until it arrives or the reader
-  // takes over. Layout meanwhile retargets it rather than cutting it short.
-  const toggleScroll = useRef<number>(undefined);
+  // Where the toggle's smooth scroll is going, until it arrives or a newer
+  // intent takes over. Layout meanwhile retargets it rather than cutting it
+  // short.
+  const toggleScroll = useRef<ToggleScroll>(undefined);
   const [trailingExpanded, setTrailingExpanded] = useState(false);
   const restHeight = trailing?.restHeight ?? 0;
   const latestRest = useRef(restHeight);
@@ -1058,7 +1065,7 @@ function Timeline({
     holdTrailing.current?.();
   }, [restHeight]);
   const trackTrailing = (element: HTMLElement) => {
-    const target = toggleScroll.current;
+    const target = toggleTarget(toggleScroll.current, intent.current);
     if (target !== undefined) {
       if (Math.abs(element.scrollTop - target) >= 1) return;
       toggleScroll.current = undefined;
@@ -1114,7 +1121,8 @@ function Timeline({
         `${height - extra}px`,
       );
       // A send or Jump to latest makes the reader follow again.
-      const toggling = toggleScroll.current !== undefined;
+      const target = toggleTarget(toggleScroll.current, intent.current);
+      const toggling = target !== undefined;
       const place =
         follow.current && !toggling ? undefined : trailingPlace.current;
       const top = latestTop(element, extra);
@@ -1127,8 +1135,8 @@ function Timeline({
             : undefined;
       if (next === undefined || Math.abs(next - element.scrollTop) < 1) return;
       if (toggling) {
-        if (Math.abs(next - (toggleScroll.current ?? 0)) < 1) return;
-        toggleScroll.current = next;
+        if (Math.abs(next - target) < 1) return;
+        toggleScroll.current = { top: next, intent: intent.current };
         element.scrollTo({ top: next, behavior: "smooth" });
         return;
       }
@@ -1190,7 +1198,9 @@ function Timeline({
     const reduced = element.ownerDocument.defaultView?.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
-    toggleScroll.current = reduced ? undefined : top;
+    toggleScroll.current = reduced
+      ? undefined
+      : { top, intent: intent.current };
     element.scrollTo({ top, behavior: reduced ? "instant" : "smooth" });
   }, []);
   const trailingState = useMemo(
@@ -2274,7 +2284,6 @@ function Timeline({
     layoutCorrection.current = false;
     intent.current++;
     userScrolled.current = true;
-    toggleScroll.current = undefined;
     if (scroller.current) recordPosition(scroller.current);
     // Retiring a pending restore lets the bottom be caught up. Wake dwell: a
     // wheel or touch at the end cannot scroll, so nothing else would.
