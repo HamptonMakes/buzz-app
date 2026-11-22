@@ -36,6 +36,7 @@ import {
 import { LayerReader } from "../../features/messages/LayerReader";
 import { inlineMedia, placeOpening } from "./placement";
 import type { MediaReviewOrigin } from "../../features/messages/composer-overlay";
+import type { Seen } from "../../features/seen/service";
 import {
   type ConversationTab,
   entryPane,
@@ -179,6 +180,7 @@ export function ChannelsPage({
   archive,
   read,
   membership,
+  seen,
 }: {
   extensions?: ConversationExtensions | undefined;
   chatMenus?: Conversation["chatMenus"] | undefined;
@@ -196,6 +198,8 @@ export function ChannelsPage({
   /** The open conversation's Mark as read, for the Escape shortcut. */
   read?: ReadShortcut | undefined;
   companion?: ReactNode;
+  /** Records one-time experiences, such as the inline thread intro. */
+  seen?: Seen | undefined;
 }) {
   const session = useRelayConnection(relay);
   const openSwitcher = useContext(OpenCommunitySwitcher);
@@ -349,6 +353,7 @@ export function ChannelsPage({
           agents={agents}
           communities={communities}
           membership={membership}
+          seen={seen}
         />
       )}
     </section>
@@ -380,6 +385,7 @@ function ChannelWorkspace({
   archive,
   read,
   membership,
+  seen,
 }: {
   extensions?: ConversationExtensions | undefined;
   chatMenus?: Conversation["chatMenus"] | undefined;
@@ -397,6 +403,7 @@ function ChannelWorkspace({
   panels: Panels;
   archive?: ArchiveShortcut | undefined;
   read?: ReadShortcut | undefined;
+  seen?: Seen | undefined;
 }) {
   const messageDraft =
     navigation?.target.kind === "page"
@@ -2901,6 +2908,7 @@ function ChannelWorkspace({
             layerTarget.rootId === inlineThread &&
             !layerTarget.channelId
           }
+          seen={seen}
           close={() => closeInline(inlineThread)}
           moveToTab={() => moveInlineToTab(inlineThread)}
         />

@@ -1104,15 +1104,6 @@ function MessageRowContent({
         messageId={row.id}
         channelId={row.channelId}
         author={name}
-        avatar={
-          <Avatar
-            src={picture}
-            alt=""
-            fallback={name}
-            size="small"
-            shape={avatarShape}
-          />
-        }
         createdAt={row.createdAt}
         keepMounted={keepMounted}
         preview={
