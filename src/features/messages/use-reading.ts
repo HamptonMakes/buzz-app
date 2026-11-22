@@ -1,4 +1,10 @@
-import { useEffect, useEffectEvent, type RefObject } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  type RefObject,
+} from "react";
 import type { RelaySession } from "../relay/session";
 import type { ReadingHandle } from "../relay/unread";
 import { useMessageEditScope } from "./MessageEditScope";
@@ -78,7 +84,12 @@ export function useReading({
   // already remeasures in the next frame, so it must not restart observation.
   const latestId = useEffectEvent(() => latestMessageId);
   const catchUpId = useEffectEvent(() => catchUpMessageId ?? latestMessageId);
-  const trailingEdge = useEffectEvent(() => trailing?.());
+  // A ref, not an effect event: unread attention asks whether a row is shown
+  // while it renders.
+  const trailingEdge = useRef(trailing);
+  useLayoutEffect(() => {
+    trailingEdge.current = trailing;
+  });
   useEffect(() => {
     if (!enabled || !scroller.current) return;
     const element: HTMLElement = scroller.current;
@@ -191,7 +202,10 @@ export function useReading({
       );
     }
     function shownBottom(viewport: DOMRect) {
-      return Math.min(viewport.bottom, trailingEdge()?.top ?? viewport.bottom);
+      return Math.min(
+        viewport.bottom,
+        trailingEdge.current?.()?.top ?? viewport.bottom,
+      );
     }
     function visibleIds() {
       const viewport = element.getBoundingClientRect();
@@ -222,7 +236,7 @@ export function useReading({
         !latest ||
         element.scrollHeight -
           element.clientHeight -
-          (trailingEdge()?.extra ?? 0) -
+          (trailingEdge.current?.()?.extra ?? 0) -
           element.scrollTop >
           1
       )
