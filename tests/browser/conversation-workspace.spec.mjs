@@ -459,6 +459,48 @@ test.describe("trailing content", () => {
       expect(Math.abs((await place(region)).past)).toBeLessThanOrEqual(1);
     });
 
+  test("rows measuring during the toggle's scroll leave it to arrive", async ({
+    page,
+    app,
+  }) => {
+    // Rows near the latest message change height over the frames after the
+    // toggle's scroll starts, as Virtua's measurements do.
+    const growOnScroll = () =>
+      region.evaluate((element) => {
+        element.addEventListener(
+          "scroll",
+          () => {
+            let frame = 0;
+            const grow = () => {
+              const rows = [...element.querySelectorAll("[data-message-id]")];
+              const row = rows.at(-1 - (frame % 4));
+              if (row) row.style.paddingBottom = `${(frame % 3) * 7 + 3}px`;
+              if (++frame < 12) requestAnimationFrame(grow);
+            };
+            requestAnimationFrame(grow);
+          },
+          { once: true },
+        );
+      });
+    await open(page, app);
+    const region = history(page);
+    await select(page, { channelId: "alpha", trailing: "long" });
+    await expect(toggle(region)).toHaveText("Full brief");
+    await settle(page, region);
+    await growOnScroll();
+    await toggle(region).press("Enter");
+    await expect(toggle(region)).toHaveText("Hide brief");
+    await settle(page, region);
+    expect(Math.abs((await place(region)).cardTop - 100)).toBeLessThanOrEqual(
+      1,
+    );
+    await growOnScroll();
+    await toggle(region).press("Enter");
+    await expect(toggle(region)).toHaveText("Full brief");
+    await settle(page, region);
+    expect(Math.abs((await place(region)).past)).toBeLessThanOrEqual(1);
+  });
+
   test("the toggle jumps without animation under reduced motion", async ({
     page,
     app,
