@@ -1,7 +1,26 @@
+/* Beside a channel timeline's docked aside, the queue takes the composer's
+   column, as in Messages.module.css, so the aside never covers it. */
 .queue {
+  --queue-aside-inset: clamp(
+    0px,
+    calc(var(--timeline-aside-width, 0px) * 1000),
+    calc(var(--space-panel-inset) - var(--space-4))
+  );
   box-sizing: border-box;
   flex-shrink: 0;
-  width: min(calc(100% - 2 * var(--space-4)), var(--buzz-message-width, 52rem));
+  position: relative;
+  inset-inline-start: calc(var(--timeline-aside-width, 0px) / -2);
+  width: min(
+    calc(
+      100% -
+      var(--timeline-aside-width, 0px) -
+      2 *
+      var(--queue-aside-inset) -
+      2 *
+      var(--space-4)
+    ),
+    var(--buzz-message-width, 52rem)
+  );
   margin: 0 auto var(--space-2);
   color: var(--text-secondary);
 }

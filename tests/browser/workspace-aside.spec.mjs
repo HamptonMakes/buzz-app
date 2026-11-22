@@ -90,6 +90,14 @@ test("a docked aside floats beside the history and composer, which leave it its 
   expect(at.aside.width).toBeGreaterThan(300);
   expect(at.list.right).toBeLessThanOrEqual(at.aside.left + 1);
   expect(at.composer.right).toBeLessThanOrEqual(at.aside.left + 1);
+  // The composer stays centered under the history's narrowed column.
+  expect(
+    Math.abs(
+      at.composer.left +
+        at.composer.width / 2 -
+        (at.list.left + at.list.width / 2),
+    ),
+  ).toBeLessThanOrEqual(2);
   expect(Math.abs(at.aside.right - at.scrollport)).toBeLessThanOrEqual(1);
   expect(at.parent).toBeGreaterThanOrEqual(at.list.width + at.aside.width - 1);
   // A tall aside fills the view from the history's top to the frame's bottom,
@@ -269,6 +277,13 @@ test("a narrow reader overlays the aside, taking no width, and resizing docks it
   await settle(page, region);
   const at = await layout(page);
   expect(at.aside.bottom).toBeLessThanOrEqual(at.history.bottom);
+  // Opened, the overlay still takes no width from the history.
+  expect(at.history.right - at.list.right).toBeLessThan(40);
+  expect(
+    await region.evaluate((element) =>
+      element.hasAttribute("data-aside-docked"),
+    ),
+  ).toBe(false);
   const offset = await region.evaluate((element) => element.scrollTop);
   const scrolled = await overlay.evaluate((element) => {
     element.scrollTop = 200;

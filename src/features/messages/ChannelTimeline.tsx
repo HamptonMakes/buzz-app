@@ -1105,8 +1105,9 @@ function Timeline({
       let width = 0;
       for (const child of float.children) {
         const position = getComputedStyle(child).position;
+        // In-flow children stack in a column.
         if (position !== "absolute" && position !== "fixed")
-          width += child.getBoundingClientRect().width;
+          width = Math.max(width, child.getBoundingClientRect().width);
       }
       frame.style.setProperty("--timeline-aside-width", `${width}px`);
       element.toggleAttribute("data-aside-docked", width > 0);
