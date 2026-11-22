@@ -9,16 +9,15 @@
   box-sizing: border-box;
   flex-shrink: 0;
   position: relative;
+  --queue-column: calc(
+    100% -
+    var(--timeline-aside-width, 0px) -
+    2 *
+    var(--queue-aside-inset)
+  );
   inset-inline-start: calc(var(--timeline-aside-width, 0px) / -2);
   width: min(
-    calc(
-      100% -
-      var(--timeline-aside-width, 0px) -
-      2 *
-      var(--queue-aside-inset) -
-      2 *
-      var(--space-4)
-    ),
+    calc(var(--queue-column) - 2 * var(--space-4)),
     var(--buzz-message-width, 52rem)
   );
   margin: 0 auto var(--space-2);
@@ -111,7 +110,7 @@ html[data-keyboard-navigation] .preview:focus-visible {
 @media (max-width: 40.625rem) {
   .queue {
     width: min(
-      calc(100% - 2 * var(--space-3)),
+      calc(var(--queue-column) - 2 * var(--space-3)),
       var(--buzz-message-width, 52rem)
     );
   }
