@@ -106,7 +106,11 @@ import { useReferenceDirectory } from "./ReferenceText";
 import { withoutRelayNotice } from "../relay/relayed-from";
 import { EditedMarker, MessageMarkdown } from "./MessageMarkdown";
 import { DetailsMessage } from "./DetailsMessage";
-import { useComposerScope } from "./composer-overlay";
+import {
+  composerHost,
+  type MediaReviewOrigin,
+  useComposerScope,
+} from "./composer-overlay";
 import {
   safeMessageUrl,
   projectMarkdownAttachments,
@@ -201,6 +205,7 @@ export type MessageRowProps = {
     seconds: number,
     hasComments?: boolean,
     attachments?: ChannelMessage["attachments"],
+    opening?: MediaReviewOrigin,
   ) => void;
 };
 
@@ -334,6 +339,11 @@ function MessageRowContent({
   const composerView = useComposerScope();
   const inView = !!composerView;
   const viewRoot = composerView?.rootId;
+  // Media opens over the view this row reads in, while its composer shows.
+  const mediaOpening = () => {
+    const host = composerHost(composerView?.handle);
+    return host ? { host, rootId } : undefined;
+  };
   const openLink = useCallback(
     (url: string) =>
       onOpenLink(url, {
@@ -920,6 +930,7 @@ function MessageRowContent({
                                 (!!row.threadRootId &&
                                   row.threadRootId !== row.id),
                               row.attachments,
+                              mediaOpening(),
                             ),
                         }
                       : {})}
@@ -974,6 +985,7 @@ function MessageRowContent({
                               (!!row.threadRootId &&
                                 row.threadRootId !== row.id),
                             row.attachments,
+                            mediaOpening(),
                           ),
                       }
                     : {})}
