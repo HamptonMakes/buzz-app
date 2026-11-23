@@ -280,7 +280,11 @@ export function policyRelay({
           filters[1].kinds[0] === 40099
         ) {
           expect(filters[1]["#h"]).toEqual(filters[0]["#h"]);
-          const parts = await Promise.all(
+          // Return the parts' combined promise rather than awaiting it here:
+          // each part reports its own faults, and a held part that the app
+          // cancels (catch-up invalidates in-flight head reads) must reject
+          // to the broker as a cancellation, not as an assertion failure.
+          return Promise.all(
             filters.map((filter) =>
               api.fetch(url, {
                 ...init,
@@ -288,14 +292,15 @@ export function policyRelay({
                 [REQUEST_PART]: true,
               }),
             ),
-          );
-          const failed = parts.find((response) => !response.ok);
-          if (failed) return failed;
-          return Response.json(
-            (
-              await Promise.all(parts.map((response) => response.json()))
-            ).flat(),
-          );
+          ).then(async (parts) => {
+            const failed = parts.find((response) => !response.ok);
+            if (failed) return failed;
+            return Response.json(
+              (
+                await Promise.all(parts.map((response) => response.json()))
+              ).flat(),
+            );
+          });
         }
         if (filters.length === 2 && filters[1].depth_limit) {
           const [root, replies] = filters;
