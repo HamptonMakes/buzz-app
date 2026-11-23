@@ -88,6 +88,12 @@
   display: flex;
   flex-direction: column;
 }
+.fullView > section > header > [class~="panel-header-title"] {
+  flex-basis: 0;
+}
+.fullView > section > header [class~="panel-header-label"] {
+  padding-inline-start: 0;
+}
 .noteView {
   flex: 1;
 }
@@ -115,23 +121,23 @@
   width: min(100%, 52rem);
   margin-inline: auto;
 }
-.document :is([role="textbox"], .markdown > *) > :is(p, ul, ol):has(+ p) {
+:is(.document [role="textbox"], .markdown > *) > :is(p, ul, ol):has(+ p) {
   margin-block-end: var(--space-3);
 }
-.document :is([role="textbox"], .markdown > *) > :is(p, ul, ol) + p {
+:is(.document [role="textbox"], .markdown > *) > :is(p, ul, ol) + p {
   margin-block-start: var(--space-3);
 }
 /* A loose list wraps its text in paragraphs. Align its first line with Editing. */
 .markdown > * > :is(ul, ol):first-child > li:first-child > p:first-child {
   margin-block-start: 0;
 }
-.document :is([role="textbox"], .markdown) h1 {
+:is(.document [role="textbox"], .markdown) h1 {
   @apply text-heading;
 }
-.document :is([role="textbox"], .markdown) h2 {
+:is(.document [role="textbox"], .markdown) h2 {
   @apply text-body-lg;
   font-weight: var(--type-weight-medium);
 }
-.document :is([role="textbox"], .markdown) h3 {
+:is(.document [role="textbox"], .markdown) h3 {
   @apply text-label;
 }

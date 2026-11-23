@@ -116,7 +116,10 @@ export type DocumentEditorSelection = {
 export type DocumentEditorHandle = {
   focusEnd(): void;
   selection(): DocumentEditorSelection | undefined;
-  focusSelection(selection: DocumentEditorSelection): void;
+  focusSelection(
+    selection: DocumentEditorSelection,
+    options?: FocusOptions,
+  ): void;
 };
 
 export type DocumentEditorProps = {
@@ -202,11 +205,14 @@ export function DocumentEditor({
         if (!field?.contains(document.activeElement)) return;
         return { start: field.selectionStart, end: field.selectionEnd, source };
       },
-      focusSelection(selection) {
+      focusSelection(selection, options) {
         if (!editing || disabled) return;
         const field = source ? sourceInput.current : input.current;
-        field?.focus();
-        field?.setSelectionRange(selection.start, selection.end);
+        if (!field) return;
+        // Set the caret first when preserving scroll so focus cannot reveal its old position.
+        if (!options?.preventScroll) field.focus();
+        field.setSelectionRange(selection.start, selection.end);
+        if (options?.preventScroll) field.focus(options);
       },
       focusEnd() {
         if (!editing || disabled) return;

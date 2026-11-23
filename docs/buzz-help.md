@@ -197,7 +197,8 @@ The list and open docs check for edits automatically. If **Refresh docs** or
 **Refresh doc** appears, use it to check again.
 
 New docs are private. After the first save, open **Share doc** to grant access
-or choose **Copy link**. View only allows community members to read. A link
+or choose **Copy link**. View only allows community members to read. Readers see
+a disabled **Viewing** control with a hint explaining their access. A link
 grants no access. Sharing includes retained revisions, and the relay operator
 can read content. Doc actions offers revision history with each revision’s
 author and avatar. Use **Move to Trash** to hide a doc from the main list. A doc in Trash shows its

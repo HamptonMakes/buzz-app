@@ -150,7 +150,11 @@ it("lists all readable docs together with last-editor attribution and searches a
 
   fireEvent.click(list.getByRole("link", { name: other.title }));
   const article = await screen.findByRole("article", { name: other.title });
-  await within(article).findByText("You have read access.");
+  const mode = await within(article).findByRole("combobox", {
+    name: "Doc mode",
+  });
+  expect(mode).toBeDisabled();
+  expect(mode).toHaveTextContent("Viewing");
   fireEvent.click(screen.getByRole("button", { name: "Back to docs" }));
   expect(screen.getByRole("searchbox")).toHaveValue("plan");
 });

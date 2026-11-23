@@ -1,8 +1,8 @@
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { noteKey, noteUrl, type Note } from "./model";
 import {
-  ArrowLeftIcon,
   ArrowsClockwiseIcon,
+  CaretLeftIcon,
   Filter2Icon,
   NoteIcon,
   PlusIcon,
@@ -289,7 +289,7 @@ export function NotesPage({
                 ref={backRef}
                 aria-label="Back to docs"
                 title="Back to docs"
-                icon={<ArrowLeftIcon size={16} />}
+                icon={<CaretLeftIcon size={16} />}
                 onClick={browse}
               />
             }

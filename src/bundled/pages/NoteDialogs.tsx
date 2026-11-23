@@ -188,23 +188,6 @@ function useRevisions(
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(true);
-  const { profiles, viewer } = workspace.session;
-  const names = useChannelIdentityNames(workspace.session, note.channel);
-  const known = useSyncExternalStore(profiles.subscribe, profiles.snapshot);
-  const generation = useProfileGeneration(profiles);
-  const authors = useMemo(
-    () => [
-      ...new Set(page?.revisions.map((revision) => revision.event.pubkey)),
-    ],
-    [page],
-  );
-  useEffect(() => {
-    if (!enabled) return;
-    void generation;
-    const release = profiles.reserve?.(authors.length);
-    void profiles.ensure(authors, "background").catch(() => {});
-    return release;
-  }, [profiles, authors, enabled, generation]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt explicitly restarts the read when Retry is requested.
   useEffect(() => {
     if (!enabled) return;
@@ -230,23 +213,82 @@ function useRevisions(
     error,
     busy,
     retry: () => setAttempt((value) => value + 1),
-    author: (revision: Note) => {
-      const author = revision.event.pubkey;
-      const profile = known.get(author);
-      const name =
-        author === viewer
+  };
+}
+
+function useRevisionAuthors(
+  workspace: NotesWorkspace,
+  channel: string,
+  authors: readonly string[],
+) {
+  const { profiles, viewer } = workspace.session;
+  const names = useChannelIdentityNames(workspace.session, channel);
+  const known = useSyncExternalStore(profiles.subscribe, profiles.snapshot);
+  const generation = useProfileGeneration(profiles);
+  useEffect(() => {
+    if (!authors.length) return;
+    void generation;
+    const release = profiles.reserve?.(authors.length);
+    void profiles.ensure(authors, "background").catch(() => {});
+    return release;
+  }, [profiles, authors, generation]);
+  return (pubkey: string) => {
+    const profile = known.get(pubkey);
+    return {
+      name:
+        pubkey === viewer
           ? "You"
           : names(
-              author,
-              profile?.name ?? formatPublicKey(author) ?? "Unknown author",
-            );
-      return {
-        name,
-        picture: avatarMedia(profile?.picture, workspace.session.media),
-        isAgent: !!profile?.isAgent,
-      };
-    },
+              pubkey,
+              profile?.name ?? formatPublicKey(pubkey) ?? "Unknown author",
+            ),
+      picture: avatarMedia(profile?.picture, workspace.session.media),
+      isAgent: !!profile?.isAgent,
+    };
   };
+}
+
+export function NoteRevisionPreview({
+  revision,
+  workspace,
+  label,
+}: {
+  revision: Note;
+  workspace: NotesWorkspace;
+  label: string;
+}) {
+  const Markdown = usePagesUi().conversation.Markdown;
+  const authors = useMemo(
+    () => [revision.event.pubkey],
+    [revision.event.pubkey],
+  );
+  const author = useRevisionAuthors(workspace, revision.channel, authors);
+  return (
+    <section aria-label={label} className={styles.stack}>
+      <header className="flex flex-col gap-1">
+        <h2 className="text-label">
+          {revision.deleted ? "Moved to Trash" : revision.title}
+        </h2>
+        <p className={`${readerStyles.byline} text-caption text-subtle`}>
+          <NoteAuthor {...author(revision.event.pubkey)} /> ·{" "}
+          <NoteTime note={revision.event} /> · {revision.revision.slice(0, 8)}
+        </p>
+      </header>
+      <div className={`${styles.revisionPreview} ${readerStyles.markdown}`}>
+        {revision.markdown ? (
+          <Markdown
+            content={revision.markdown}
+            scale="document"
+            session={workspace.session}
+          />
+        ) : (
+          <p className="text-body-sm text-subtle">
+            {revision.deleted ? "This doc is in Trash." : "Empty revision"}
+          </p>
+        )}
+      </div>
+    </section>
+  );
 }
 
 export function NoteHistoryMenu({
@@ -262,12 +304,20 @@ export function NoteHistoryMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [offset, setOffset] = useState(0);
-  const { page, error, busy, retry, author } = useRevisions(
+  const { page, error, busy, retry } = useRevisions(
     note,
     workspace,
     offset,
     open,
   );
+  const authors = useMemo(
+    () =>
+      open
+        ? [...new Set(page?.revisions.map(({ event }) => event.pubkey))]
+        : [],
+    [page, open],
+  );
+  const author = useRevisionAuthors(workspace, note.channel, authors);
   return (
     <MenuSubmenu
       onOpenChange={(open) => {
@@ -317,7 +367,11 @@ export function NoteHistoryMenu({
             onClick={() => onSelect(revision.revision, offset)}
           >
             <span aria-hidden="true" className="shrink-0">
-              <NoteAuthor {...author(revision)} avatarOnly size="small" />
+              <NoteAuthor
+                {...author(revision.event.pubkey)}
+                avatarOnly
+                size="small"
+              />
             </span>
             <span className={styles.revision}>
               <span
@@ -330,7 +384,8 @@ export function NoteHistoryMenu({
                 className={`${styles.revisionByline} text-caption text-subtle`}
               >
                 <span className="truncate">
-                  {author(revision).name} · <NoteTime note={revision.event} />
+                  {author(revision.event.pubkey).name} ·{" "}
+                  <NoteTime note={revision.event} />
                 </span>
                 <span
                   className={`${styles.revisionId} truncate`}
@@ -403,8 +458,7 @@ export function NoteHistory({
   selection: { revision?: string; offset?: number };
   trigger: RefObject<HTMLElement | null>;
 }) {
-  const Markdown = usePagesUi().conversation.Markdown;
-  const { page, error, busy, retry, author } = useRevisions(
+  const { page, error, busy, retry } = useRevisions(
     note,
     workspace,
     selection.offset ?? 0,
@@ -454,28 +508,11 @@ export function NoteHistory({
       {saveError && <p role="alert">{saveError}</p>}
       {busy && <p role="status">Reading revision…</p>}
       {selected && (
-        <section aria-label="Selected revision" className={styles.stack}>
-          <h2 className="text-label">
-            {selected.deleted ? "Moved to Trash" : selected.title}
-          </h2>
-          <p className={`${readerStyles.byline} text-caption text-subtle`}>
-            <NoteAuthor {...author(selected)} /> ·{" "}
-            <NoteTime note={selected.event} /> · {selected.revision.slice(0, 8)}
-          </p>
-          <div className={styles.revisionPreview}>
-            {selected.markdown ? (
-              <Markdown
-                content={selected.markdown}
-                scale="document"
-                session={workspace.session}
-              />
-            ) : (
-              <p className="text-body-sm text-subtle">
-                {selected.deleted ? "This doc is in Trash." : "Empty revision"}
-              </p>
-            )}
-          </div>
-        </section>
+        <NoteRevisionPreview
+          revision={selected}
+          workspace={workspace}
+          label="Selected revision"
+        />
       )}
       {!busy && !error && !selected && (
         <p>Choose a version from Doc actions → Revision history.</p>

@@ -110,7 +110,27 @@ test("edits and preserves drafts using host UI, then adopts an agent revision wi
     name: "Shared research",
     exact: true,
   });
-  await expect(sharedDoc).toBeVisible();
+  const sharedMode = sharedDoc.getByRole("combobox", { name: "Doc mode" });
+  const modeHint = page.getByRole("tooltip").filter({
+    hasText: "You have read-only access.",
+  });
+  await expect(sharedMode).toBeDisabled();
+  await expect(sharedMode).toHaveText("Viewing");
+  await sharedMode.hover();
+  await expect(modeHint).toBeVisible();
+  await sharedDoc
+    .getByRole("heading", { name: "Shared research" })
+    .first()
+    .hover();
+  await expect(modeHint).toBeHidden();
+  await page.getByRole("button", { name: "Back to docs" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    sharedDoc.getByRole("group", { name: "Doc mode" }),
+  ).toBeFocused();
+  await expect(modeHint).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(sharedMode).toHaveAttribute("aria-expanded", "false");
   await page.goBack();
   await expect(shared).toBeVisible();
   await page.goForward();
@@ -210,13 +230,18 @@ test("edits and preserves drafts using host UI, then adopts an agent revision wi
   await expect(currentRevision).toBeVisible();
   const olderRevision = page
     .getByRole("menuitem", { name: /Connected pages plan.*You/ })
-    .first();
+    .last();
   await olderRevision.focus();
   await olderRevision.press("Enter");
   const preview = page.getByRole("dialog", { name: "Revision preview" });
+  const revision = preview.getByRole("region", { name: "Selected revision" });
+  await expect(revision).toContainText("You ·");
   await expect(
-    preview.getByRole("region", { name: "Selected revision" }),
-  ).toContainText("You ·");
+    revision.getByRole("heading", { name: "Connected notes", exact: true }),
+  ).toHaveCSS("font-size", `${h1}px`);
+  await expect(
+    revision.getByRole("heading", { name: "Supporting research", exact: true }),
+  ).toHaveCSS("font-size", `${h2}px`);
   await page.keyboard.press("Escape");
   await expect(preview).toBeHidden();
   await expect(
@@ -313,7 +338,7 @@ Unsaved source edit. Rich edit.`.trimEnd(),
 
 // Browser boundary: the real conversation link dispatcher must retain the
 // composer and use the existing addressable panel Back/Forward/Close owner.
-test("keeps the document scroll position when switching modes after reopening", async ({
+test("focuses the start of the document without changing its scroll position", async ({
   page,
 }) => {
   await page.goto("/tests/fixtures/bundled-pages.html");
@@ -338,6 +363,10 @@ test("keeps the document scroll position when switching modes after reopening", 
   const body = article.getByRole("textbox", { name: "Doc body" });
   await expect(toolbar).toBeVisible();
   await expect(body).toContainText("Paragraph 28");
+  await expect(body).toBeFocused();
+  await expect(body).toHaveJSProperty("selectionStart", 0);
+  await expect(body).toHaveJSProperty("selectionEnd", 0);
+  await expect(contents).toHaveJSProperty("scrollTop", 0);
   const firstLine = contents
     .getByText("Paragraph 1 of the working plan.", { exact: true })
     .filter({ visible: true });
@@ -347,6 +376,7 @@ test("keeps the document scroll position when switching modes after reopening", 
     return line.y - control.y - control.height;
   };
   const editingGap = await firstLineGap();
+  await body.evaluate((field) => field.setSelectionRange(12, 12));
   await mode.click();
   await page.getByRole("option", { name: "Viewing", exact: true }).click();
   await expect(mode).toHaveText("Viewing");
@@ -366,7 +396,9 @@ test("keeps the document scroll position when switching modes after reopening", 
   await expect(toolbar).toBeVisible();
   await expect(mode).toHaveText("Editing");
   await expect(mode).toHaveAttribute("data-variant", "subtle");
-  await expect(body).not.toBeFocused();
+  await expect(body).toBeFocused();
+  await expect(body).toHaveJSProperty("selectionStart", 0);
+  await expect(body).toHaveJSProperty("selectionEnd", 0);
   await expect(contents).toHaveJSProperty("scrollTop", 64);
 
   await mode.click();

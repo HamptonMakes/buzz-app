@@ -65,16 +65,6 @@
   border-radius: var(--radius-control);
   padding: var(--space-4);
 }
-.source {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  overflow: auto;
-  font-family: var(--font-mono);
-  font-size: var(--text-body-sm);
-  font-weight: var(--text-body-sm--font-weight);
-  letter-spacing: var(--text-body-sm--letter-spacing);
-  line-height: var(--text-body-sm--line-height);
-}
 .hidden {
   display: none;
 }

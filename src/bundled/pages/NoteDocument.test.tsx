@@ -364,19 +364,22 @@ it("preserves a concurrent draft and does not overwrite until the user resolves 
   f.change("My draft");
   await f.edit(f.carl, f.note, {
     title: "Agent plan",
-    markdown: "Another edit",
+    markdown: "# Latest plan\n\n- Another edit",
   });
   await advance(1500);
   await saved(f.save);
-  expect(
+  const conflict = within(
     screen.getByRole("dialog", { name: "This doc has a newer revision" }),
-  ).toBeVisible();
+  );
+  const preview = within(
+    conflict.getByRole("region", { name: "Latest revision" }),
+  );
+  expect(preview.getByRole("heading", { name: "Latest plan" })).toBeVisible();
+  expect(preview.getByRole("listitem")).toHaveTextContent("Another edit");
   expect(f.title).toHaveValue("My draft");
   await advance(30_000);
   expect(f.save).toHaveBeenCalledOnce();
-  fireEvent.click(
-    screen.getByRole("button", { name: "I’ve compared; keep my draft" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Keep my draft" }));
   await advance(1500);
   await saved(f.save);
   expect(f.save).toHaveBeenCalledTimes(2);

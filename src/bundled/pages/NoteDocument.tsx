@@ -35,7 +35,13 @@ import {
   MenuTrigger,
 } from "../../shared/design-system/ui/Menu";
 import { Select } from "../../shared/design-system/ui/Select";
-import { NoteHistory, NoteHistoryMenu, NoteSharing } from "./NoteDialogs";
+import { Tooltip } from "../../shared/design-system/ui/Tooltip";
+import {
+  NoteHistory,
+  NoteHistoryMenu,
+  NoteRevisionPreview,
+  NoteSharing,
+} from "./NoteDialogs";
 import { NoteEditor, type NoteEditorHandle } from "./NoteEditor";
 import { NoteSaveAction } from "./NoteSaveAction";
 import {
@@ -152,7 +158,7 @@ export function NoteDocument({
   const dialog = active ? (view ? view.dialog : localDialog) : undefined;
   useLayoutEffect(() => {
     if (dialog || !wantsEditing) {
-      needsFocus.current = false;
+      needsFocus.current = !wantsEditing;
       pendingFocus.current = undefined;
       return;
     }
@@ -174,7 +180,10 @@ export function NoteDocument({
         !editor.current?.selection() &&
         document.activeElement !== titleInput.current
       )
-        editor.current?.focusEnd();
+        editor.current?.focusSelection(
+          { start: 0, end: 0, source },
+          { preventScroll: true },
+        );
       return;
     }
     // First-save handoff waits for the shared editor to adopt the saved draft.
@@ -189,7 +198,17 @@ export function NoteDocument({
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [active, busy, unavailable, note, canEdit, editing, dialog, wantsEditing]);
+  }, [
+    active,
+    busy,
+    unavailable,
+    note,
+    canEdit,
+    editing,
+    dialog,
+    wantsEditing,
+    source,
+  ]);
   const presentation = useRef({ view, onViewChange, editing });
   presentation.current = { view, onViewChange, editing };
   const setEditing = useCallback((edit: boolean) => {
@@ -531,6 +550,33 @@ export function NoteDocument({
   ]);
   const loading = busy && (!note || unavailable);
   const displayTitle = note && noteDisplayTitle(note, retainedVersion?.title);
+  const readOnlyMessage =
+    note && !unavailable && !canEdit && !note.deleted
+      ? note.editable
+        ? "You have read-only access."
+        : "This doc format is read-only in this version of Buzz."
+      : undefined;
+  const modeHint = !loading && !editing ? readOnlyMessage : undefined;
+  const modeControl = (
+    <Select
+      label="Doc mode"
+      variant="compact"
+      appearance={!loading && editing ? "subtle" : "outlined"}
+      size="sm"
+      value={loading ? "" : editing ? "editing" : "viewing"}
+      disabled={loading || busy || saving || !canEdit}
+      groups={[
+        {
+          label: "Doc mode",
+          options: [
+            { value: "viewing", label: "Viewing" },
+            { value: "editing", label: "Editing" },
+          ],
+        },
+      ]}
+      onValueChange={(mode) => setEditing(mode === "editing")}
+    />
+  );
   const showRefresh =
     needsRefresh ||
     retainedReadFailed ||
@@ -642,27 +688,22 @@ export function NoteDocument({
           />
         )}
         <div className={styles.actions}>
-          {(loading || (note && canEdit && !note.deleted)) && (
-            <div className="min-w-20">
-              <Select
-                label="Doc mode"
-                variant="compact"
-                appearance={!loading && editing ? "subtle" : "outlined"}
-                size="sm"
-                value={loading ? "" : editing ? "editing" : "viewing"}
-                disabled={loading || busy || saving}
-                groups={[
-                  {
-                    label: "Doc mode",
-                    options: [
-                      { value: "viewing", label: "Viewing" },
-                      { value: "editing", label: "Editing" },
-                    ],
-                  },
-                ]}
-                onValueChange={(mode) => setEditing(mode === "editing")}
-              />
-            </div>
+          {modeHint ? (
+            <Tooltip content={modeHint}>
+              <fieldset
+                className="min-w-20 rounded-full"
+                aria-label="Doc mode"
+                aria-description={modeHint}
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: The disabled control's hint needs a keyboard trigger.
+                tabIndex={0}
+              >
+                {modeControl}
+              </fieldset>
+            </Tooltip>
+          ) : (
+            (loading || (note && canEdit && !note.deleted)) && (
+              <div className="min-w-20">{modeControl}</div>
+            )
           )}
           <NoteSaveAction
             shown={!!note && ((dirty && !!saveError) || !!restoreFrom)}
@@ -764,12 +805,8 @@ export function NoteDocument({
             Auto-save is paused. Your draft is kept. {saveError}
           </p>
         )}
-        {note && !unavailable && !canEdit && !note.deleted && (
-          <p className="text-caption text-subtle">
-            {note.editable
-              ? "You have read access."
-              : "This doc format is read-only in this version of Buzz."}
-          </p>
+        {readOnlyMessage && editing && (
+          <p className="text-caption text-subtle">{readOnlyMessage}</p>
         )}
         {note?.deleted && !unavailable && (
           <p className="text-body-sm text-subtle">This doc is in Trash.</p>
@@ -873,6 +910,7 @@ export function NoteDocument({
             title="This doc has a newer revision"
             description="Compare the latest contents with your unsaved draft before choosing what to keep."
             size="wide"
+            height="stable"
             preventClose
             actions={
               <>
@@ -894,16 +932,16 @@ export function NoteDocument({
                     setSaveError("");
                   }}
                 >
-                  I’ve compared; keep my draft
+                  Keep my draft
                 </Button>
               </>
             }
           >
-            <h2 className="text-label">{conflict.title}</h2>
-            <pre className={styles.source}>
-              {conflict.markdown ||
-                (conflict.deleted ? "This doc is in Trash." : "Empty doc")}
-            </pre>
+            <NoteRevisionPreview
+              revision={conflict}
+              workspace={workspace}
+              label="Latest revision"
+            />
           </Dialog>
         )}
       </section>
