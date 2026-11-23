@@ -3,11 +3,17 @@ import { Context } from "@deepseek-ai/cordis";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { Communities } from "../../features/communities/service";
-import { createShortcutBindings } from "../../features/shortcuts/preferences";
+import {
+  createShortcutBindings,
+  SHORTCUT_BINDINGS_KEY,
+} from "../../features/shortcuts/preferences";
 import { ShortcutsService } from "../../features/shortcuts/service";
 import { CommunityShortcuts } from "./CommunityShortcuts";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 function setup(selected: string | null, ids = ["a", "b"]) {
   const root = new Context();
@@ -88,6 +94,17 @@ it("leaves every number alone with no communities", () => {
   const { onSelect } = setup(null, []);
   expect(press("1")).toBe(false);
   expect(onSelect).not.toHaveBeenCalled();
+});
+
+it("keeps a saved rebind on a number over the number's default", () => {
+  localStorage.setItem(
+    SHORTCUT_BINDINGS_KEY,
+    JSON.stringify({ "next-community": { key: "1", mod: true } }),
+  );
+  const { onSelect } = setup("a");
+  expect(press("1")).toBe(true);
+  expect(onSelect).toHaveBeenLastCalledWith("b");
+  expect(onSelect).toHaveBeenCalledTimes(1);
 });
 
 it("follows a reordered switcher at once, for numbers and steps alike", () => {
