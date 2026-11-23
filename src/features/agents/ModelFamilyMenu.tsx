@@ -4,6 +4,7 @@ import {
   CaretDownIcon,
   CheckIcon,
   LightningIcon,
+  SparklesIcon,
 } from "../../shared/design-system/icons";
 import { Button } from "../../shared/design-system/ui/Button";
 import { ChoiceRow } from "../../shared/design-system/ui/ChoiceRow";
@@ -129,6 +130,8 @@ export function ModelFamilyMenu({
   const hasFamilyLogos = [...families.keys()].some((family) =>
     modelLogo(family),
   );
+  // Routes' marks need the leading column too.
+  const leadingColumn = hasFamilyLogos || routes.length > 0;
   // Fast models get their own section up front, so the quick choices are one
   // click away; they stay in their families too. A catalog of only fast (or
   // no fast) models gains nothing from a separate section.
@@ -188,7 +191,15 @@ export function ModelFamilyMenu({
                 {leading}
               </span>
             )}
-            {modelLogo(modelFamily(selected), "buzz-select-leading")}
+            {selected.route ? (
+              <SparklesIcon
+                className="buzz-select-leading"
+                size={20}
+                aria-hidden="true"
+              />
+            ) : (
+              modelLogo(modelFamily(selected), "buzz-select-leading")
+            )}
             <span className={styles.value}>
               <span className={`buzz-select-value ${styles.model}`}>
                 {selected.label}
@@ -221,7 +232,7 @@ export function ModelFamilyMenu({
               aria-description={defaultChoice.description}
               closeOnClick
             >
-              {hasFamilyLogos && (
+              {leadingColumn && (
                 <span className="buzz-select-leading" aria-hidden="true" />
               )}
               <ChoiceRow
@@ -245,9 +256,10 @@ export function ModelFamilyMenu({
                   aria-description={model.description}
                   closeOnClick
                 >
-                  {hasFamilyLogos && (
-                    <span className="buzz-select-leading" aria-hidden="true" />
-                  )}
+                  {/* Sparkles mark a route: it picks the model per turn. */}
+                  <span className="buzz-select-leading" aria-hidden="true">
+                    <SparklesIcon size={20} aria-hidden="true" />
+                  </span>
                   <ChoiceRow
                     label={model.label}
                     description={model.description}
@@ -284,7 +296,7 @@ export function ModelFamilyMenu({
           .map(([family, choices]) => (
             <MenuSubmenu key={family}>
               <MenuSubmenuTrigger>
-                {hasFamilyLogos && (
+                {leadingColumn && (
                   <span className="buzz-select-leading" aria-hidden="true">
                     {modelLogo(family)}
                   </span>

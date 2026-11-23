@@ -38,7 +38,9 @@ import {
   CircleNotchIcon,
   CircleDottedIcon,
   GaugeIcon,
+  SparklesIcon,
 } from "../../shared/design-system/icons/index";
+import { routeOf, useLatestRoutedTurn } from "../agents/model-routes";
 import { IconButton } from "../../shared/design-system/ui/IconButton";
 import { Button } from "../../shared/design-system/ui/Button";
 import {
@@ -540,6 +542,7 @@ function AgentChoice({
   thumb?: Ref<HTMLInputElement>;
 }) {
   const [feedback, setFeedback] = useState("");
+  const latest = useLatestRoutedTurn(choice.pubkey);
   if (choice.loading)
     return (
       <div
@@ -576,6 +579,13 @@ function AgentChoice({
       ? runs.efforts.find((item) => item.id === value.effort)?.id
       : undefined;
   const several = choice.models.length > 1;
+  const onRoute = !!routeOf(runs.id);
+  // What its route chose for its latest turn here: the one running, or the
+  // last one. Only while it still runs on a route.
+  const chose =
+    latest && (onRoute || choice.automatic)
+      ? `${latest.fallback ? "Latest turn fell back to" : "Latest turn:"} ${latest.label}`
+      : undefined;
   // Chat choices stay explicit even when they match the provider default.
   // An effort the new model lacks falls back to its default.
   const chooseModel = (id: string) => {
@@ -611,6 +621,9 @@ function AgentChoice({
             <MenuRadioGroup value={runs.id} onValueChange={chooseModel}>
               {choice.models.map((item) => (
                 <MenuRadioItem key={item.id} value={item.id} closeOnClick>
+                  {routeOf(item.id) && (
+                    <SparklesIcon size={16} aria-hidden="true" />
+                  )}
                   {item.label}
                 </MenuRadioItem>
               ))}
@@ -682,7 +695,11 @@ function AgentChoice({
           ) : (
             <div className={styles.status}>
               <span className={styles.statusIcon}>
-                <CircleDottedIcon size={20} aria-hidden="true" />
+                {onRoute ? (
+                  <SparklesIcon size={20} aria-hidden="true" />
+                ) : (
+                  <CircleDottedIcon size={20} aria-hidden="true" />
+                )}
               </span>
               <div className={styles.statusCopy}>
                 {runs.id && several ? (
@@ -698,6 +715,18 @@ function AgentChoice({
             </div>
           )}
         </div>
+      )}
+      {chose && (
+        <span
+          className={`${styles.level} ${styles.controls}`}
+          title={
+            latest?.rationale
+              ? `${latest.route}: ${latest.rationale}`
+              : latest?.route
+          }
+        >
+          {chose}
+        </span>
       )}
       {feedback && (
         <span className={`${styles.about} ${styles.controls}`} role="status">

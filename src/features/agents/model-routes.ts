@@ -271,6 +271,8 @@ export type RoutedPick = TurnPick &
     /** What chose the pick, for the turn's activity. */
     routed?: Readonly<{
       route: ModelRoute;
+      /** What it runs on, for people: e.g. `Sonnet 5.5 · High`. */
+      label: string;
       rationale?: string;
       /** The router didn't answer usably. */
       fallback?: true;
@@ -291,6 +293,15 @@ function listed(
         effort: choice.effort,
       }),
   };
+}
+
+/** A pick's display name, from the harness's labels for its model and
+ * effort; no model is the harness's default. */
+function pickLabel(models: readonly Model[], pick: TurnPick | undefined) {
+  const model = models.find((item) => item.id === pick?.model);
+  if (!model) return "the default model";
+  const effort = model.efforts.find((level) => level.id === pick?.effort);
+  return effort ? `${model.label} · ${effort.label}` : model.label;
 }
 
 /** The route a turn runs on, if any: one picked for its message, or, without
@@ -385,6 +396,7 @@ export async function routeTurn(
       ...chosen,
       routed: {
         route,
+        label: pickLabel(own, chosen),
         ...(choice?.rationale && { rationale: choice.rationale }),
       },
     };
@@ -392,10 +404,59 @@ export async function routeTurn(
     console.warn(`Model route ${id} chose a model this harness doesn't list`);
   // Automatic's recommended model runs without a pick.
   const fallback = input.automatic ? undefined : listed(own, route.fallback);
-  return { ...fallback, routed: { route, fallback: true } };
+  return {
+    ...fallback,
+    routed: { route, label: pickLabel(own, fallback), fallback: true },
+  };
+}
+
+/** The latest turn an agent's route chose for on this device, while the app
+ * runs: what it runs on now, or ran on last. */
+export type LatestRoutedTurn = Readonly<{
+  route: string;
+  /** e.g. `Sonnet 5.5 · High`. */
+  label: string;
+  fallback?: true;
+  rationale?: string;
+  /** Unix milliseconds. */
+  at: number;
+}>;
+const latest = new Map<string, LatestRoutedTurn>();
+const latestListeners = new Set<() => void>();
+/** Records the turn `pubkey`'s route just chose for (AgentsService). */
+export function noteRoutedTurn(
+  pubkey: string,
+  routed: NonNullable<RoutedPick["routed"]>,
+) {
+  latest.set(
+    pubkey,
+    Object.freeze({
+      route: routed.route.label,
+      label: routed.label,
+      ...(routed.fallback && { fallback: true as const }),
+      ...(routed.rationale && { rationale: routed.rationale }),
+      at: Date.now(),
+    }),
+  );
+  for (const listener of latestListeners) listener();
+}
+const subscribeLatest = (listener: () => void) => {
+  latestListeners.add(listener);
+  return () => {
+    latestListeners.delete(listener);
+  };
+};
+/** The latest turn `pubkey`'s route chose for, rendering again on the next. */
+export function useLatestRoutedTurn(pubkey: string) {
+  return useSyncExternalStore(
+    subscribeLatest,
+    () => latest.get(pubkey),
+    () => latest.get(pubkey),
+  );
 }
 
 /** Clears the routers between tests. */
 export function resetModelRoutesForTests() {
   setModelRouters([]);
+  latest.clear();
 }

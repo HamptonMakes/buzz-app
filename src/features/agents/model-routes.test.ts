@@ -180,6 +180,7 @@ it("asks the saved route's router for an idle turn's model and effort", async ()
     effort: "high",
     routed: {
       route: expect.objectContaining({ id: "auto-balanced" }),
+      label: "Sonnet · High",
       rationale: "Small task",
     },
   });
@@ -262,6 +263,7 @@ it("falls back when the router fails, answers late or picks an unlisted model", 
     effort: "high",
     routed: {
       route: expect.objectContaining({ id: "auto-balanced" }),
+      label: "Opus · High",
       fallback: true,
     },
   };
@@ -288,6 +290,7 @@ it("falls back to Automatic's recommendation without a pick", async () => {
   await expect(routeTurn(turn({ automatic: true }))).resolves.toEqual({
     routed: {
       route: expect.objectContaining({ id: "auto-premium" }),
+      label: "the default model",
       fallback: true,
     },
   });

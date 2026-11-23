@@ -3362,7 +3362,7 @@ export class AgentRunners {
               // The turn's activity says what its route chose, and why.
               if (routed)
                 job.work?.notice(
-                  `${routed.route.label}${routed.fallback ? " fell back to" : " chose"} ${pick.model || "the default model"}${pick.effort ? ` · ${pick.effort}` : ""}${routed.rationale ? `: ${routed.rationale}` : ""}`,
+                  `${routed.route.label}${routed.fallback ? " fell back to" : " chose"} ${routed.label}${routed.rationale ? `: ${routed.rationale}` : ""}`,
                 );
               return pick;
             } catch (error) {
