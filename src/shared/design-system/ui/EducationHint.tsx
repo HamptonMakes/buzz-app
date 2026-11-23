@@ -4,7 +4,8 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Button } from "./Button";
+import { XIcon } from "../icons/index";
+import { IconButton } from "./IconButton";
 import { PreviewCard } from "./PreviewCard";
 
 /** What EducationHint needs from the host's Seen service. */
@@ -26,7 +27,7 @@ export function useUnseen(seen: SeenStore | undefined, key: string) {
 
 /**
  * A one-time tip about a feature, opened by hovering or focusing the control it
- * explains. It stays available until the person chooses "Dismiss", which Seen
+ * explains. It stays available until the person dismisses it, which Seen
  * remembers; using the feature does not dismiss it. Without Seen, or once
  * seen, only the control renders.
  */
@@ -56,16 +57,16 @@ export function EducationHint({
       tone="inverse"
       aria-label="Tip"
     >
-      <span className="text-label-sm">
-        {content}{" "}
-        <Button
+      <span className="buzz-education-hint">
+        <span className="text-body-sm">{content}</span>
+        <IconButton
           ref={action}
-          variant="link"
-          size="text"
+          aria-label="Dismiss tip"
+          icon={<XIcon />}
+          variant="ghost"
+          size="xs"
           onClick={() => seen?.mark(seenKey)}
-        >
-          Dismiss
-        </Button>
+        />
       </span>
     </PreviewCard>
   );
