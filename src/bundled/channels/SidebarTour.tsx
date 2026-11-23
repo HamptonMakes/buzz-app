@@ -103,7 +103,7 @@ export const sidebarTourPages: readonly TourPage[] = [
       <SchematicScene>
         <SchematicCard
           motion="lift"
-          travel={3}
+          travel={2}
           header={<SchematicPointer motion="drag" />}
         >
           <SchematicRow lead="chat" tone="accent" />

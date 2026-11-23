@@ -204,12 +204,15 @@
   }
   .buzz-schematic-slot[data-motion="lift"],
   .buzz-schematic-slot[data-motion="yield"] {
+    /* The other card's full height plus the gap between cards: travel is
+       the other card's row count, so the two swap places exactly. */
     --schematic-shift: calc(
       var(--schematic-pad) *
       2 +
+      2px +
+      var(--schematic-row) +
       var(--schematic-unit) *
-      var(--schematic-travel) -
-      var(--schematic-gap) +
+      var(--schematic-travel) +
       var(--schematic-stack-gap)
     );
     z-index: 0;
@@ -221,10 +224,6 @@
   }
   .buzz-schematic-slot[data-motion="lift"] .buzz-schematic-card {
     animation: schematic-raise var(--schematic-loop) var(--ease-state)
-      var(--schematic-delay) infinite both var(--schematic-state);
-  }
-  .buzz-schematic-slot[data-motion="lift"] .buzz-schematic-rows {
-    animation: schematic-collapse var(--schematic-loop) var(--ease-settle)
       var(--schematic-delay) infinite both var(--schematic-state);
   }
   .buzz-schematic-slot[data-motion="yield"] {
@@ -377,21 +376,6 @@
         var(--schematic-unit) *
         (var(--schematic-visible) - var(--schematic-total))
       );
-    }
-  }
-  @keyframes schematic-collapse {
-    0%,
-    18% {
-      max-block-size: calc(
-        var(--schematic-unit) *
-        var(--schematic-total) -
-        var(--schematic-gap)
-      );
-    }
-    26%,
-    100% {
-      max-block-size: 0;
-      margin-block-start: calc(var(--schematic-gap) * -1);
     }
   }
   @keyframes schematic-raise {

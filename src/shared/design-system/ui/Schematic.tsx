@@ -35,7 +35,7 @@ type CardMotion =
   | "grow"
   /** Rows reveal after the header is double-clicked. */
   | "expand"
-  /** The card shrinks to its header and travels down past its neighbor. */
+  /** The card is raised and trades places with the card below it. */
   | "lift"
   /** The card moves up to fill the lifted card's place. */
   | "yield"
@@ -62,7 +62,7 @@ export function SchematicCard({
   /** Rows showing before the motion; the rest reveal as it plays. */
   visibleRows?: number;
   motion?: CardMotion;
-  /** Distance a lift or yield travels, in row units. */
+  /** Rows in the other card of a lift and yield pair, so the two swap exactly. */
   travel?: number;
 }) {
   const total = Children.count(children);
