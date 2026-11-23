@@ -1,5 +1,6 @@
 import { readSubthread } from "../features/relay/subthread";
 import { messageAuthor } from "../features/relay/fold";
+import { contextTags } from "../features/relay/context-size";
 // The Buzz tools: what an agent does in Buzz, in the wire formats the `buzz`
 // CLI writes. Names, arguments and descriptions are kept short because every
 // session pays for them in context. Each tool answers in plain text.
@@ -1989,6 +1990,7 @@ async function post(
       ...files.tags,
       ...(await tools.emoji(content)),
       ...extra,
+      ...contextTags(tools.client.contextTokens?.()),
     ],
   };
   const event = await (files.managedAttachments.length

@@ -513,6 +513,27 @@ it("signs the turn's triggering request separately from the flattened reply", as
   expect(published).toHaveLength(1);
 });
 
+it("stamps each message with its session's context size, when known", async () => {
+  const { client, published } = fake(community);
+  const context = { channel: "chan", root };
+  let tokens: number | undefined = 435_123;
+  const stamped = { ...client, contextTokens: () => tokens };
+  await callTool(stamped, context, "send", { text: "a", audience: "agents" });
+  await callTool(stamped, context, "reply_in_subthread", {
+    parent: nested,
+    text: "b",
+    audience: "agents",
+  });
+  tokens = undefined;
+  await callTool(stamped, context, "send", { text: "c", audience: "agents" });
+  expect(published.map((event) => event.content)).toEqual(["a", "b", "c"]);
+  expect(
+    published.map((event) =>
+      event.tags.filter(([name]) => name === "buzz:context"),
+    ),
+  ).toEqual([[["buzz:context", "435123"]], [["buzz:context", "435123"]], []]);
+});
+
 it("refuses to post a name it cannot resolve unless told who it means", async () => {
   const { client, published } = fake(community);
   const context = { channel: "chan", root };
@@ -968,6 +989,7 @@ it("shows a message's meaningful tags in a read, but not its bookkeeping", async
     ["t", "release"],
     ["imeta", "url https://relay.test/media/a.png", "m image/png"],
     ["buzz:request", nested],
+    ["buzz:context", "435123"],
   ];
   const auth = ["auth", bob, "kind=9", "8".repeat(128)];
   const hidden = [

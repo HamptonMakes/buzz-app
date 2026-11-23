@@ -37,6 +37,7 @@ import {
   defineDoc,
   defineExtension,
   defineTool,
+  GenerationTask,
   Harness,
   hook,
   ToolTask,
@@ -1349,6 +1350,8 @@ export function serve({
         cores: new Map(),
         /** Each conversation's tool context, for runs resumed after a restart. */
         contexts: new Map(),
+        /** Each conversation's context size, as its latest model call left it. */
+        sizes: new Map(),
         /** Each watched conversation, once its watch has started, and
          * whether a run is in it. */
         watched: new Map(),
@@ -1443,6 +1446,18 @@ export function serve({
     return opened;
   }
 
+  /** Keeps each conversation's context size, the tokens of its latest model
+   * call, which its next Buzz tool call reports. */
+  function sizes(opened) {
+    return hook(GenerationTask, {
+      afterResponse: (message, api) => {
+        const tokens = message?.usage?.totalTokens;
+        if (Number.isSafeInteger(tokens) && tokens > 0)
+          opened.sizes.set(api.conversationId, tokens);
+      },
+    });
+  }
+
   /** The agent's Buzz tools, served by the plugin. Those it lists to load on
    * search are deferred: the model finds them with `tool_search`, which
    * `hint` says what it can find with. */
@@ -1466,8 +1481,9 @@ export function serve({
         ),
       ],
       hooks: protectedAgent
-        ? []
+        ? [sizes(opened)]
         : [
+            sizes(opened),
             hook(ToolTask, {
               beforeTool: (input, api, context) =>
                 awaitWithContext(
@@ -1522,6 +1538,7 @@ export function serve({
                   agent: opened.agent,
                   conversation: api.conversationId,
                   context: opened.contexts.get(api.conversationId) ?? {},
+                  contextTokens: opened.sizes.get(api.conversationId),
                   name: tool.name,
                   arguments: args,
                 },
@@ -1689,8 +1706,10 @@ export function serve({
       throw error;
     }
     // A one-off turn's conversation, with no place, is not used again.
-    if (!opened.contexts.has(record.conversationId))
+    if (!opened.contexts.has(record.conversationId)) {
       opened.cores.delete(record.conversationId);
+      opened.sizes.delete(record.conversationId);
+    }
     if (record.status !== "done") {
       const detail = CUT_OFF[record.reason] ?? record.detail;
       const failed = opened.failed.get(id) ?? {
