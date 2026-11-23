@@ -524,7 +524,8 @@ export type ConversationWorkspaceProps = {
   /** A card over the bottom of the channel timeline; a thread ignores it.
    * At rest its first `restHeight` pixels show below the latest message.
    * Scrolling over the card grows it, then slides it up; `expanded` is true
-   * once it has grown. `toggle()` grows it to near the view's top, or back. */
+   * once it has grown. `toggle()` grows it to near the view's top, or back.
+   * Render the whole card at rest too: growing scrolls it into view. */
   trailing?: {
     restHeight: number;
     content(state: { expanded: boolean; toggle(): void }): ReactNode;

@@ -1065,8 +1065,8 @@ function Timeline({
       element.style.removeProperty("--timeline-trailing-rest");
     };
   }, [restHeight, placeJumpToLatest]);
-  // The sheet covers the history's scrollport, with its inline padding and
-  // measure, so the card lines up with the history's rows.
+  // The sheet covers the history's scrollport, with its inline padding, so
+  // the card lines up with the history's rows.
   useLayoutEffect(() => {
     const element = scroller.current;
     const panel = sheet.current;
@@ -1082,10 +1082,6 @@ function Timeline({
       panel.style.right = `${frame.clientWidth - element.offsetLeft - element.offsetWidth}px`;
       panel.style.bottom = `${frame.clientHeight - top - element.offsetHeight}px`;
       panel.style.paddingInline = `${style.paddingInlineStart} ${style.paddingInlineEnd}`;
-      panel.style.setProperty(
-        "--timeline-measure",
-        style.getPropertyValue("--timeline-measure"),
-      );
       // The layout can still settle while a toggle grows the card.
       const target = sheetTarget.current;
       if (!target) return;
@@ -1097,6 +1093,7 @@ function Timeline({
     const resize = new ResizeObserver(place);
     resize.observe(element);
     resize.observe(frame);
+    if (panel.lastElementChild) resize.observe(panel.lastElementChild);
     place();
     return () => {
       resize.disconnect();
@@ -1109,6 +1106,12 @@ function Timeline({
     if (!element) return;
     const expand = (sheetTarget.current ?? element.scrollTop) < 1;
     const top = expand ? sheetFull(element) : 0;
+    // Already there, as a card too short to grow is: no scroll will settle it.
+    if (Math.abs(top - element.scrollTop) < 1) {
+      sheetTarget.current = undefined;
+      setTrailingExpanded(top >= 1);
+      return;
+    }
     setTrailingExpanded(expand);
     const reduced = element.ownerDocument.defaultView?.matchMedia(
       "(prefers-reduced-motion: reduce)",
@@ -2626,6 +2629,8 @@ function Timeline({
           onTouchStart={() => (sheetTarget.current = undefined)}
           onScroll={(event) => {
             placeJumpToLatest();
+            // Rows the card stops covering can be read.
+            readingPositioned(scroller.current);
             const top = event.currentTarget.scrollTop;
             const target = sheetTarget.current;
             if (target !== undefined) {

@@ -102,6 +102,8 @@
    the history scrolls under the sheet's empty top. Scrolling the card grows
    it, then slides it up; it never scrolls the history. */
 .trailingSheet {
+  /* The history's measure, so the card lines up with its rows. */
+  --timeline-measure: var(--buzz-message-width, 52rem);
   position: absolute;
   z-index: 1;
   overflow-y: auto;
@@ -1088,6 +1090,9 @@ html[data-keyboard-navigation] .attachmentImage:focus-visible {
   --timeline-measure: 100%;
   --message-hover-start-inset: var(--space-3);
   padding-inline-start: var(--space-3);
+}
+:where(html[data-message-density="compact"]) .trailingSheet {
+  --timeline-measure: 100%;
 }
 /* Measure loaded rows without painting a scroll position we will replace,
    then fade them in once positioned. */
