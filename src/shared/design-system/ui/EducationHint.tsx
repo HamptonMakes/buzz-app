@@ -53,6 +53,7 @@ export function EducationHint({
     <PreviewCard
       trigger={children}
       side={side}
+      align="center"
       actionRef={action}
       tone="inverse"
       aria-label="Tip"
