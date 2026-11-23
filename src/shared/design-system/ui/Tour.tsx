@@ -31,7 +31,8 @@ type TourProps = {
   onDismiss: (reason: "finished" | "declined" | "dismissed") => void;
   /** The last page's forward action; "Got it" by default. */
   finishLabel?: string;
-  /** Turns the last page into a choice: this secondary action declines. */
+  /** Turns the last page into a choice under its copy: this answer declines,
+   * finishLabel accepts, and the footer keeps only Back. */
   declineLabel?: string;
   pages: readonly TourPage[];
   /** Names the tour for assistive tech, such as "What's new in the sidebar". */
@@ -85,6 +86,7 @@ export function Tour({
   const page = pages[Math.min(index, pages.length - 1)];
   if (!page) return null;
   const last = index >= pages.length - 1;
+  const choice = last && declineLabel !== undefined;
   const go = (next: number) =>
     setIndex(Math.max(0, Math.min(pages.length - 1, next)));
   const change = (
@@ -149,11 +151,27 @@ export function Tour({
               Step {index + 1} of {pages.length}
             </span>
           </div>
-          <div
-            className="buzz-tour-footer"
-            // A choice needs the full width, so its buttons sit under the dots.
-            data-choice={last && declineLabel ? "" : undefined}
-          >
+          {/* A choice is the last page's answer, not a step, so it sits with
+              the question and the footer keeps Back meaning back. */}
+          {choice && (
+            <div className="buzz-tour-choice">
+              <Button
+                variant="subtle"
+                size="sm"
+                onClick={() => onDismiss("declined")}
+              >
+                {declineLabel}
+              </Button>
+              <Button
+                variant="prominent"
+                size="sm"
+                onClick={() => onDismiss("finished")}
+              >
+                {finishLabel}
+              </Button>
+            </div>
+          )}
+          <div className="buzz-tour-footer">
             {pages.length > 1 ? (
               <span className="buzz-tour-dots" aria-hidden="true">
                 {pages.map((item, position) => (
@@ -168,32 +186,20 @@ export function Tour({
               <span />
             )}
             <span className="buzz-tour-actions">
-              {last && declineLabel ? (
-                <Button
-                  variant="subtle"
-                  size="sm"
-                  onClick={() => onDismiss("declined")}
-                >
-                  {declineLabel}
+              {index > 0 && (
+                <Button variant="ghost" size="sm" onClick={() => go(index - 1)}>
+                  Back
                 </Button>
-              ) : (
-                index > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => go(index - 1)}
-                  >
-                    Back
-                  </Button>
-                )
               )}
-              <Button
-                variant="prominent"
-                size="sm"
-                onClick={() => (last ? onDismiss("finished") : go(index + 1))}
-              >
-                {last ? finishLabel : "Next"}
-              </Button>
+              {!choice && (
+                <Button
+                  variant="prominent"
+                  size="sm"
+                  onClick={() => (last ? onDismiss("finished") : go(index + 1))}
+                >
+                  {last ? finishLabel : "Next"}
+                </Button>
+              )}
             </span>
           </div>
         </div>
