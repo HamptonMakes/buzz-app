@@ -62,6 +62,67 @@ export type RouteMessage = Readonly<{
   /** Unix seconds. */
   createdAt: number;
 }>;
+/** A file or image attached to the turn's message, as its `imeta` tag
+ * names it. */
+export type RouteAttachment = Readonly<{
+  name?: string;
+  /** Its MIME type, e.g. `image/png`. */
+  type?: string;
+  /** Bytes. */
+  size?: number;
+}>;
+/** One of the agent's local skills, as the composer's `/` lists them. */
+export type RouteSkill = Readonly<{ name: string; description: string }>;
+/** The conversation's last turn a route chose for, on this device while the
+ * app runs. */
+export type RouteTurn = Readonly<{
+  route: string;
+  /** The harness's model id; absent when it ran on the harness's default. */
+  model?: string;
+  effort?: string;
+  fallback?: true;
+  /** Unix milliseconds: when the route chose, and when that turn's work
+   * ended (absent while it still runs). A harness's prompt cache is warm
+   * for a while after its last model call, so a router can weigh the cost
+   * of a switch against how long ago `endedAt` was. */
+  chosenAt: number;
+  endedAt?: number;
+}>;
+/** What the turn is, beyond its prompt and thread: what the host already
+ * holds about it, gathered without asking any other service. */
+export type ModelRouteContext = Readonly<{
+  /** What started it: a chat `mention` (or DM), a `watch`, a watch's
+   * `catch-up`, a plugin's `source` watch, a `timer`, a plugin's wake
+   * (`plugin`), the agent's own `handoff` from another conversation, or
+   * `attention`. */
+  trigger:
+    | "mention"
+    | "watch"
+    | "catch-up"
+    | "source"
+    | "timer"
+    | "plugin"
+    | "handoff"
+    | "attention";
+  /** The kind of channel it is in, when known. */
+  conversation?: "dm" | "solo" | "channel";
+  /** Its message is a reply in a thread. */
+  thread?: true;
+  /** `history` holds the channel's earlier messages rather than a thread's:
+   * a DM's, a Solo chat's or a channel session's top-level message. */
+  channelHistory?: true;
+  /** The agent's own standing instructions, whole. */
+  instructions?: string;
+  /** Its harness's local skills; empty when the harness has no skill
+   * folders here. */
+  skills: readonly RouteSkill[];
+  /** The agent's workspace, and the folder this conversation runs in when a
+   * plugin gave it one. Paths on this device. */
+  workspace?: string;
+  folder?: string;
+  attachments: readonly RouteAttachment[];
+  previous?: RouteTurn;
+}>;
 export type ModelRouteRequest = Readonly<{
   /** The agent type's id, e.g. `claude-code` or `codex`. */
   harness: string;
@@ -69,9 +130,13 @@ export type ModelRouteRequest = Readonly<{
   agent: Readonly<{ pubkey: string; name: string }>;
   /** The text of the message or wake that starts the turn. */
   prompt: string;
-  /** Earlier messages in the turn's thread, oldest first; read only when
-   * asked, at most once. Empty outside a thread. */
+  /** Earlier messages in the turn's conversation, oldest first: its
+   * thread's, or for a top-level message in a DM, a Solo chat or a channel
+   * session, the channel's. Read only when asked, at most once. */
   history(): Promise<readonly RouteMessage[]>;
+  /** The rest of what the host knows about the turn; read only when asked,
+   * at most once. */
+  context(): Promise<ModelRouteContext>;
   /** The harness's own models for the agent, each with its effort levels. */
   models: readonly Model[];
   signal: AbortSignal;
@@ -277,6 +342,9 @@ export type RoutedPick = TurnPick &
       /** The router didn't answer usably. */
       fallback?: true;
     }>;
+    /** Notes that the turn's work ended (AgentsService sets it, the runner
+     * calls it), so the conversation's `RouteTurn` has its `endedAt`. */
+    ended?: () => void;
   }>;
 
 /** A pick of one of `models`, with an effort that model lists. */
@@ -336,10 +404,11 @@ export async function routeTurn(
     models: readonly Model[];
     request: Omit<
       ModelRouteRequest,
-      "route" | "models" | "harness" | "signal" | "history"
+      "route" | "models" | "harness" | "signal" | "history" | "context"
     > & {
       /** Read with the selection's own signal, which ends with it. */
       history(signal: AbortSignal): Promise<readonly RouteMessage[]>;
+      context(signal: AbortSignal): Promise<ModelRouteContext>;
     };
     signal: AbortSignal;
   }>,
@@ -360,6 +429,7 @@ export async function routeTurn(
   );
   const signal = AbortSignal.any([input.signal, late.signal]);
   let history: Promise<readonly RouteMessage[]> | undefined;
+  let context: Promise<ModelRouteContext> | undefined;
   let choice: ModelRouteChoice | undefined;
   try {
     // A router that ignores the signal still can't hold the turn past it.
@@ -373,6 +443,7 @@ export async function routeTurn(
           .select({
             ...input.request,
             history: () => (history ??= input.request.history(signal)),
+            context: () => (context ??= input.request.context(signal)),
             harness,
             route: id,
             models: own,
@@ -386,7 +457,7 @@ export async function routeTurn(
     console.warn(`Model route ${id} could not choose a model`, error);
   } finally {
     clearTimeout(timer);
-    // Ends any read of the thread the router left running.
+    // Ends any read of the thread or context the router left running.
     if (!late.signal.aborted) late.abort(new Error("The model route chose"));
   }
   input.signal.throwIfAborted();
@@ -455,8 +526,50 @@ export function useLatestRoutedTurn(pubkey: string) {
   );
 }
 
+// Each conversation's last routed turn, by agent pubkey and the
+// conversation's key as harnesses key their sessions.
+const turns = new Map<string, RouteTurn>();
+const MAX_TURNS = 500;
+const turnKey = (pubkey: string, conversation: string) =>
+  `${pubkey}\0${conversation}`;
+/** The last turn a route chose for in `conversation`, while the app runs. */
+export function previousRoutedTurn(pubkey: string, conversation: string) {
+  return turns.get(turnKey(pubkey, conversation));
+}
+/** Records the turn a route just chose for in `conversation`; the call it
+ * returns notes when that turn's work ended. */
+export function noteConversationTurn(
+  pubkey: string,
+  conversation: string,
+  route: string,
+  pick: RoutedPick,
+  now: () => number = Date.now,
+) {
+  const key = turnKey(pubkey, conversation);
+  const turn: RouteTurn = Object.freeze({
+    route,
+    ...(pick.model && { model: pick.model }),
+    ...(pick.effort && { effort: pick.effort }),
+    ...(pick.routed?.fallback && { fallback: true as const }),
+    chosenAt: now(),
+  });
+  turns.delete(key);
+  turns.set(key, turn);
+  // The oldest conversations go first.
+  for (const old of turns.keys()) {
+    if (turns.size <= MAX_TURNS) break;
+    turns.delete(old);
+  }
+  return () => {
+    // A later turn in the conversation replaced it.
+    if (turns.get(key) !== turn) return;
+    turns.set(key, Object.freeze({ ...turn, endedAt: now() }));
+  };
+}
+
 /** Clears the routers between tests. */
 export function resetModelRoutesForTests() {
   setModelRouters([]);
   latest.clear();
+  turns.clear();
 }

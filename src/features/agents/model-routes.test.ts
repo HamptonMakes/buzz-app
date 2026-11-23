@@ -3,6 +3,8 @@ import {
   activeRoute,
   initialModel,
   launchModel,
+  noteConversationTurn,
+  previousRoutedTurn,
   type ModelRouter,
   resetModelRoutesForTests,
   routeLabel,
@@ -76,6 +78,11 @@ const turn = (
     agent: { pubkey: "a".repeat(64), name: "Agent" },
     prompt: "Fix a typo",
     history: async () => [],
+    context: async () => ({
+      trigger: "mention" as const,
+      skills: [],
+      attachments: [],
+    }),
   },
   signal: new AbortController().signal,
   ...overrides,
@@ -230,6 +237,76 @@ it("reads the thread once, ending the read with the choice", async () => {
   expect(read).toHaveBeenCalledTimes(1);
   expect(read.mock.calls[0]?.[0]).toBe(signal);
   expect(signal?.aborted).toBe(true);
+});
+
+it("reads the turn's context once, with the choice's signal", async () => {
+  const read = vi.fn(async (_signal: AbortSignal) => ({
+    trigger: "watch" as const,
+    instructions: "Be brief.",
+    skills: [{ name: "review", description: "Reviews a diff" }],
+    attachments: [{ name: "shot.png", type: "image/png" }],
+  }));
+  let seen: unknown;
+  let signal: AbortSignal | undefined;
+  setModelRouters([
+    router(async (request) => {
+      seen = await request.context();
+      await request.context();
+      signal = request.signal;
+      return { model: "sonnet" };
+    }),
+  ]);
+  await routeTurn(turn({ request: { ...turn().request, context: read } }));
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(read.mock.calls[0]?.[0]).toBe(signal);
+  expect(seen).toMatchObject({ trigger: "watch", instructions: "Be brief." });
+});
+
+it("keeps each conversation's last routed turn and when its work ended", () => {
+  let now = 1_000;
+  const clock = () => now;
+  const pubkey = "a".repeat(64);
+  const first = noteConversationTurn(
+    pubkey,
+    "chan",
+    "auto",
+    { model: "sonnet", effort: "high" },
+    clock,
+  );
+  expect(previousRoutedTurn(pubkey, "chan")).toEqual({
+    route: "auto",
+    model: "sonnet",
+    effort: "high",
+    chosenAt: 1_000,
+  });
+  expect(previousRoutedTurn(pubkey, "chan/root")).toBeUndefined();
+  expect(previousRoutedTurn("b".repeat(64), "chan")).toBeUndefined();
+  now = 4_000;
+  first();
+  expect(previousRoutedTurn(pubkey, "chan")).toMatchObject({ endedAt: 4_000 });
+  // A later turn replaces it, and the earlier one's end changes nothing.
+  const second = noteConversationTurn(
+    pubkey,
+    "chan",
+    "auto",
+    {
+      routed: {
+        route: { id: "auto", label: "Auto" },
+        label: "x",
+        fallback: true,
+      },
+    },
+    clock,
+  );
+  now = 9_000;
+  first();
+  expect(previousRoutedTurn(pubkey, "chan")).toEqual({
+    route: "auto",
+    fallback: true,
+    chosenAt: 4_000,
+  });
+  second();
+  expect(previousRoutedTurn(pubkey, "chan")).toMatchObject({ endedAt: 9_000 });
 });
 
 it("routes a per-message route pick and Automatic's route", async () => {

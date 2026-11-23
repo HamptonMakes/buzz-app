@@ -199,7 +199,11 @@ import {
 import { relayPartition } from "../relay/partition";
 import { threadReference } from "../relay/thread-reference";
 import {
+  type ModelRouteContext,
   type ModelRouter,
+  noteConversationTurn,
+  previousRoutedTurn,
+  type RouteAttachment,
   type RoutedPick,
   type RouteMessage,
   routeOf,
@@ -282,6 +286,8 @@ import {
 } from "./store";
 import { isHuddleRoom } from "../huddle/lifecycle";
 import { soloChat } from "./solo-chat";
+import { localSkills } from "./local-skills";
+import { COMMUNITY_SESSION } from "../agent-harness/session-scope";
 import {
   readCheckpoints,
   splitLegacyCheckpoints,
@@ -1688,6 +1694,46 @@ const MODEL_FIELDS = ["model", "provider", "effort"] as const;
 const ROUTE_HISTORY = 20;
 /** The most prompt text a model router is given. */
 const ROUTE_PROMPT_CHARS = 16_000;
+/** Where a routed turn runs, as its router reads it. */
+type RoutePlace = Readonly<{
+  /** The conversation as its harness keys the session. */
+  key?: string;
+  conversation?: ModelRouteContext["conversation"];
+  thread: boolean;
+  /** Its history is the channel's: a top-level message in a DM, a Solo chat
+   * or a channel session. */
+  channelHistory: boolean;
+}>;
+/** The files a message attaches, from its `imeta` tags. */
+function attachmentsOf(event: RelayEvent): RouteAttachment[] {
+  return event.tags.flatMap((tag) => {
+    if (tag[0] !== "imeta") return [];
+    const fields = new Map(
+      tag.slice(1).flatMap((entry) => {
+        const space = entry.indexOf(" ");
+        return space > 0
+          ? [[entry.slice(0, space), entry.slice(space + 1).trim()] as const]
+          : [];
+      }),
+    );
+    const name = fields.get("filename") || fields.get("alt");
+    const type = fields.get("m");
+    const size = Number(fields.get("size"));
+    return [
+      {
+        ...(name && { name }),
+        ...(type && { type }),
+        ...(Number.isSafeInteger(size) && size >= 0 && { size }),
+      },
+    ];
+  });
+}
+/** What started a turn, as a model router reads it. */
+function routeTrigger(trigger: Trigger): ModelRouteContext["trigger"] {
+  if (trigger.type === "plugin")
+    return "from" in trigger ? "handoff" : "plugin";
+  return trigger.type;
+}
 /** What a turn asks, as a model router reads it. */
 function promptOf(trigger: Trigger) {
   const text =
@@ -3992,6 +4038,8 @@ export class AgentsService extends Service implements Agents {
       })
     )
       return undefined;
+    // Where it runs, for its history, its context and its turn.
+    const where = this.routePlace(agent, type, trigger, place);
     return async (selection) => {
       const chosen = await routeTurn({
         harness: type.id,
@@ -4002,12 +4050,26 @@ export class AgentsService extends Service implements Agents {
         request: {
           agent: { pubkey: agent.pubkey, name: agent.name },
           prompt: promptOf(trigger),
-          history: (read) => this.routeHistory(agent, trigger, place, read),
+          history: (read) =>
+            this.routeHistory(agent, trigger, place, where, read),
+          context: () => this.routeContext(agent, type, trigger, place, where),
         },
         signal: selection,
       });
-      if (chosen.routed) noteRoutedTurn(agent.pubkey, chosen.routed);
-      return chosen;
+      if (!chosen.routed) return chosen;
+      noteRoutedTurn(agent.pubkey, chosen.routed);
+      const { key } = where;
+      return key
+        ? {
+            ...chosen,
+            ended: noteConversationTurn(
+              agent.pubkey,
+              key,
+              chosen.routed.route.id,
+              chosen,
+            ),
+          }
+        : chosen;
     };
   }
   /** Whether `event` directs the agent as its owner's, as every harness
@@ -4038,28 +4100,117 @@ export class AgentsService extends Service implements Agents {
       return false;
     }
   }
-  /** The thread before a routed turn's message, oldest first: at most
-   * ROUTE_HISTORY messages, read once and only if its router asks. */
+  /** Where a routed turn runs: its conversation's kind, and the key its
+   * harness keys the session by (`sessionPlace`). */
+  private routePlace(
+    agent: Agent,
+    type: RegisteredAgentType,
+    trigger: Trigger,
+    place: SessionPlace | undefined,
+  ): RoutePlace {
+    if (!place) return { thread: false, channelHistory: false };
+    const summary = this.channelOf(agent, { tags: [["h", place.channelId]] });
+    const session = this.sessionPlace(agent, type, place);
+    const current = trigger.type === "mention" ? trigger.event.id : undefined;
+    const thread = !!place.root && place.root !== current;
+    return {
+      key: session.community
+        ? COMMUNITY_SESSION
+        : conversationKey(session.channelId, session.root),
+      ...(summary && {
+        conversation:
+          summary.channelType === "dm"
+            ? "dm"
+            : summary.channelType === "solo"
+              ? "solo"
+              : "channel",
+      }),
+      thread,
+      // The session is the whole channel's, or the community's.
+      channelHistory: !thread && !session.root,
+    };
+  }
+  /** What the host holds about a routed turn beyond its prompt and thread,
+   * read only if its router asks. Nothing here asks another service. */
+  private async routeContext(
+    agent: Agent,
+    type: RegisteredAgentType,
+    trigger: Trigger,
+    place: SessionPlace | undefined,
+    where: RoutePlace,
+  ): Promise<ModelRouteContext> {
+    const config = agent.config as {
+      instructions?: unknown;
+      workspace?: unknown;
+    };
+    const text = (value: unknown) =>
+      typeof value === "string" && value.trim() ? value : undefined;
+    const instructions = text(config.instructions);
+    const workspace = text(config.workspace)?.trim();
+    const folder = place && this.conversationFolder(agent.key, place);
+    const skills = await localSkills(type.skillFolders ?? []).catch(
+      (error: unknown) => {
+        console.warn("A model route could not list the agent's skills", error);
+        return [];
+      },
+    );
+    const events =
+      trigger.type === "mention" || trigger.type === "watch"
+        ? [trigger.event]
+        : trigger.type === "catch-up"
+          ? trigger.events.map(({ event }) => event)
+          : [];
+    const previous = where.key && previousRoutedTurn(agent.pubkey, where.key);
+    return {
+      trigger: routeTrigger(trigger),
+      ...(where.conversation && { conversation: where.conversation }),
+      ...(where.thread && { thread: true as const }),
+      ...(where.channelHistory && { channelHistory: true as const }),
+      ...(instructions && { instructions }),
+      skills: skills.map(({ name, description }) => ({ name, description })),
+      ...(workspace && { workspace }),
+      ...(folder && { folder }),
+      attachments: events.flatMap(attachmentsOf),
+      ...(previous && { previous }),
+    };
+  }
+  /** The conversation before a routed turn's message, oldest first: at
+   * most ROUTE_HISTORY messages of its thread, or of its channel when that
+   * is the conversation (`RoutePlace.channelHistory`). Read once and only
+   * if its router asks. */
   private async routeHistory(
     agent: Agent,
     trigger: Trigger,
     place: SessionPlace | undefined,
+    where: RoutePlace,
     signal: AbortSignal,
   ): Promise<readonly RouteMessage[]> {
     const reads = ownerReads(this.relay(agent.key), agent.pubkey);
     const root = place?.root;
-    if (!reads || !place || !root) return [];
+    if (!reads || !place || (!root && !where.channelHistory)) return [];
     const current = trigger.type === "mention" ? trigger.event.id : undefined;
     const events = await reads.read(
-      [
-        { ids: [root], "#h": [place.channelId], limit: 1 },
-        {
-          kinds: [9, 40002],
-          "#h": [place.channelId],
-          "#e": [root],
-          limit: ROUTE_HISTORY,
-        },
-      ],
+      where.channelHistory || !root
+        ? [
+            {
+              kinds: [9, 40002],
+              "#h": [place.channelId],
+              // The current message and the ones before it.
+              ...(trigger.type === "mention" && {
+                until: trigger.event.created_at,
+              }),
+              limit: ROUTE_HISTORY + 1,
+            },
+          ]
+        : [
+            { ids: [root], "#h": [place.channelId], limit: 1 },
+            {
+              kinds: [9, 40002],
+              "#h": [place.channelId],
+              "#e": [root],
+              limit: ROUTE_HISTORY,
+            },
+          ],
       signal,
     );
     return [...new Map(events.map((event) => [event.id, event])).values()]

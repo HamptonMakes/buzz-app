@@ -165,8 +165,13 @@ An agent on a route saves `route:<id>` as its model. Before each turn it starts
 while idle in a conversation, Buzz asks `router.select` for one of the
 harness's models and a thinking level. A turn that steers a running one keeps
 its pick, and a failure or no answer within 30 seconds uses the route's
-fallback. The router can also choose the route new agents and Automatic agents
-use. See `src/features/agents/model-routes.ts`.
+fallback. The router can ask for the conversation's earlier messages
+(`request.history()`) and for what Buzz already holds about the turn
+(`request.context()`): what started it, the agent's instructions, skills and
+workspace, attached files, and the conversation's last routed pick with when
+that turn ended. Buzz runs no git or GitHub calls for either. The router can
+also choose the route new agents and Automatic agents use. See
+`src/features/agents/model-routes.ts`.
 
 ## Federated identity build input
 

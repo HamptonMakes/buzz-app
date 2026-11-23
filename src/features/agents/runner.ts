@@ -3356,9 +3356,11 @@ export class AgentRunners {
               await harnessStop?.().catch(() => {});
             });
             try {
-              const { routed, ...pick } = await choose(
+              const { routed, ended, ...pick } = await choose(
                 AbortSignal.any([lifetime, stop.signal]),
               );
+              // The conversation's last routed turn ends with its work.
+              if (ended) void working.settled.then(ended, ended);
               // The turn's activity says what its route chose, and why.
               if (routed)
                 job.work?.notice(
