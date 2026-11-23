@@ -89,6 +89,7 @@ async function harness(
       }
       const call = {
         url: upstreamUrl,
+        method: init?.method ?? "GET",
         body: init?.body ? JSON.parse(init.body) : undefined,
         signal: init?.signal,
         headers: init?.headers,
@@ -1874,6 +1875,7 @@ test("real outbox creates, invites and sends", async () => {
         ["visibility", "open"],
         ["channel_type", "stream"],
         ["ttl", "604800"],
+        ["migration", "slack"],
       ],
     });
     await vi.waitFor(() =>
@@ -1889,6 +1891,8 @@ test("real outbox creates, invites and sends", async () => {
       tags: [
         ["h", id],
         ["p", "a".repeat(64)],
+        ["p", "b".repeat(64)],
+        ["migration", "slack"],
       ],
     });
     await vi.waitFor(() =>
@@ -1914,6 +1918,13 @@ test("real outbox creates, invites and sends", async () => {
     expect(h.publications.map((event) => event.kind)).toEqual([
       9007, 9007, 9000, 9,
     ]);
+    expect(
+      h.publications.map(({ tags }) =>
+        tags.filter(([name]) => name === "migration"),
+      ),
+    ).toEqual([[], [["migration", "slack"]], [["migration", "slack"]], []]);
+    for (const event of h.publications)
+      expect(verifyEvent(structuredClone(event))).toBe(true);
   } finally {
     owner?.dispose();
     traffic?.dispose();
@@ -3158,6 +3169,75 @@ test("invite mint forwards only bounded ttl/max_uses and returns the relay invit
   }
 });
 
+test("invite list and revoke sign their exact relay routes and never echo a code", async () => {
+  const cursor = "1795049564000000_0b9c8f7e-1d2a-4b3c-9e8f-7a6b5c4d3e2f";
+  const page = { invites: [], next_before: null };
+  const { h, post } = await communityAdmin((call) =>
+    call.url.endsWith("/api/invites/revoke")
+      ? call.body.code === "v2.leak"
+        ? Response.json({ error: "v2.leak not found" }, { status: 404 })
+        : Response.json({ id: "x", revoked_at: 1 })
+      : Response.json(page),
+  );
+  try {
+    for (const [body, url] of [
+      [{}, `${fixtureRelayUrl}/api/invites`],
+      [{ before: cursor }, `${fixtureRelayUrl}/api/invites?before=${cursor}`],
+    ]) {
+      const response = await post("invites", body);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(page);
+      const sent = h.calls.at(-1);
+      expect(sent.url).toBe(url);
+      expect(sent.method).toBe("GET");
+      expect(sent.body).toBeUndefined();
+      expect(sent.auth.tags).toContainEqual(["u", url]);
+      expect(sent.auth.tags).toContainEqual(["method", "GET"]);
+      expect(sent.auth.tags.some(([name]) => name === "payload")).toBe(false);
+    }
+    const revoked = await post("invite-revoke", { code: "v2.abc" });
+    expect(revoked.status).toBe(200);
+    const sent = h.calls.at(-1);
+    expect(sent.url).toBe(`${fixtureRelayUrl}/api/invites/revoke`);
+    expect(sent.method).toBe("POST");
+    expect(sent.body).toEqual({ code: "v2.abc" });
+    expect(sent.auth.tags).toContainEqual([
+      "u",
+      `${fixtureRelayUrl}/api/invites/revoke`,
+    ]);
+    expect(sent.auth.tags).toContainEqual(["method", "POST"]);
+    expect(sent.auth.tags).toContainEqual([
+      "payload",
+      createHash("sha256")
+        .update(JSON.stringify({ code: "v2.abc" }))
+        .digest("hex"),
+    ]);
+
+    const calls = h.calls.length;
+    for (const body of [
+      { before: "1&limit=200" },
+      { before: `${cursor}&limit=1` },
+      { before: "1795049564000000_0b9c8f7e-1d2a-4b3c-9e8f-7a6b5c4d3e2fx" },
+      { limit: 200 },
+    ])
+      expect((await post("invites", body)).status).toBe(400);
+    for (const body of [
+      {},
+      { id: "x" },
+      { id: "a", code: "v2.a" },
+      { code: "a b" },
+    ])
+      expect((await post("invite-revoke", body)).status).toBe(400);
+    expect(h.calls).toHaveLength(calls);
+
+    const refused = await post("invite-revoke", { code: "v2.leak" });
+    expect(refused.status).toBe(404);
+    expect(await refused.text()).not.toContain("v2.leak");
+  } finally {
+    await h.close();
+  }
+});
+
 test("member changes sign exact NIP-43 admin kinds and reject malformed changes locally", async () => {
   const { h, post } = await communityAdmin((call) =>
     Response.json({ accepted: true, event_id: call.body.id, message: "" }),
@@ -4131,6 +4211,66 @@ test("details routes are narrow, require the live owner, and do not widen lifecy
   }
 });
 
+test("later Admin additions cross the broker and replay the exact saved event after restart", async () => {
+  const h = await harness(success);
+  let first;
+  let restored;
+  let live;
+  let records = [];
+  const storage = {
+    load: () => structuredClone(records),
+    save: (next) => {
+      records = structuredClone(next);
+    },
+  };
+  try {
+    const transport = await connectBrokerTransport(h.base);
+    first = createOutbox(transport.viewer, transport.writer, storage);
+    await first.outbox.ready();
+    const id = first.outbox.send({
+      kind: 9000,
+      content: "",
+      tags: [
+        ["h", "11111111-1111-4111-8111-111111111111"],
+        ["p", getPublicKey(new Uint8Array(32).fill(5))],
+        ["role", "admin"],
+      ],
+    });
+    await vi.waitFor(() =>
+      expect(first.outbox.snapshot()[0]?.delivery).toBe("failed"),
+    );
+    // Signing succeeds through the purpose-bound route. Publication needs a live socket.
+    const signed = first.outbox.snapshot()[0]?.signed;
+    expect(signed).toBeDefined();
+    const saved = JSON.parse(JSON.stringify(signed));
+    expect(verifyEvent(structuredClone(saved))).toBe(true);
+    expect(saved.tags).toContainEqual(["role", "admin"]);
+    expect(saved.tags.at(-1)?.[0]).toBe("client-id");
+    expect(h.publications).toHaveLength(0);
+    expect((await h.post("sign", saved)).status).toBe(400);
+    expect((await h.post("publish", saved)).status).toBe(400);
+    first.dispose();
+    wallClock += 10000;
+    const resumed = await connectBrokerTransport(h.base);
+    live = await openBrokerSocket(resumed);
+    restored = createOutbox(resumed.viewer, resumed.writer, storage);
+    await restored.outbox.ready();
+    restored.outbox.retry(id);
+    await vi.waitFor(() =>
+      expect(restored.outbox.snapshot()[0]?.delivery).toBe("accepted"),
+    );
+    expect(h.publications).toEqual([saved]);
+    expect(
+      JSON.parse(JSON.stringify(restored.outbox.snapshot()[0]?.signed)),
+    ).toEqual(saved);
+  } finally {
+    first?.dispose();
+    restored?.dispose();
+    live?.dispose();
+    await h.close();
+  }
+});
+
 test("member administration uses isolated shape-limited routes and the current community socket", async () => {
   const h = await harness(success);
   let live;
@@ -4187,6 +4327,26 @@ test("member administration uses isolated shape-limited routes and the current c
       { ...template, tags: [...template.tags, ["h", id]] },
       { ...template, tags: null },
       { ...template, tags: [null] },
+      ...[
+        [...template.tags, ["client-id", "invalid"]],
+        [
+          ...template.tags,
+          ["client-id", "22222222-2222-4222-8222-222222222222"],
+          ["p", target],
+        ],
+        [
+          template.tags[0],
+          ["p", transport.viewer],
+          template.tags[2],
+          ["client-id", "22222222-2222-4222-8222-222222222222"],
+        ],
+        [
+          template.tags[0],
+          template.tags[1],
+          ["role", "owner"],
+          ["client-id", "22222222-2222-4222-8222-222222222222"],
+        ],
+      ].map((tags) => ({ ...template, tags })),
     ];
     for (const event of invalid)
       for (const route of [

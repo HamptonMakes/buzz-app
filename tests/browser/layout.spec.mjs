@@ -353,7 +353,17 @@ test("joined sidebar and workspace surface, real link panel and compact communit
   near(dock.y, main.y);
   near(dock.height, main.height);
   near(dock.x - main.x - main.width, 1);
-  near(dock.x + dock.width, page.viewportSize().width - gap - 1);
+  const halfSpace = await page.locator(".shell-content").evaluate((element) => {
+    const rootSize = Number.parseFloat(
+      getComputedStyle(document.documentElement).fontSize,
+    );
+    return (
+      Number.parseFloat(
+        getComputedStyle(element).getPropertyValue("--space-half"),
+      ) * rootSize
+    );
+  });
+  near(dock.x + dock.width, page.viewportSize().width - (gap - halfSpace) - 1);
   await expect(composer).toHaveJSProperty("value", "Layout draft");
   await expect(composer).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath("joined-one-panel.png") });
@@ -1106,6 +1116,10 @@ sidePanelOverlapTest(
       const root = app.histories
         .get("primary/alpha")
         .find((event) => event.content === "Thread root 0");
+      // Opening or closing a panel slides the timeline sideways. Playwright
+      // checks the hit target only on mousedown; a mouseup after the slide
+      // lands beside the button and the click retargets to the message row.
+      await settlePanelMotion(page);
       await page
         .locator(`[data-channel-timeline] [data-message-id="${root.id}"]`)
         .getByRole("button", { name: /^View thread:/ })
@@ -1126,7 +1140,11 @@ sidePanelOverlapTest(
       near(threadHeader.y, channelHeader.y);
     };
 
+    // settlePanelMotion sees only animations already running, so wait for
+    // each trigger's end state first: a dock not yet mounted or unmounted
+    // would let the settle resolve before the slide begins.
     await toggle.click();
+    await expect(sidePanel).toBeVisible();
     await openThread();
     await stacked(thread);
     await page
@@ -1135,6 +1153,7 @@ sidePanelOverlapTest(
       )
       .click();
     await button(page, "Hide side panel fixture").click();
+    await expect(sidePanel).toBeHidden();
     await openThread();
     await toggle.click();
     await stacked(thread);

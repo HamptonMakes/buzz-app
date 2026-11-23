@@ -204,6 +204,10 @@ if (nestedWindow && nestedParent && nestedChild) {
   );
   replies.splice(293, 1, child);
 }
+// A visit to the nested child itself, as a link to that reply opens it.
+const exactChild = new URLSearchParams(location.search).has("exactChild")
+  ? replies[293]?.id
+  : undefined;
 const exactReaction = signed(viewer, {
   kind: 7,
   content: "👍",
@@ -254,8 +258,12 @@ let repairGate = false;
 let failRepair = false;
 const rejected = new Set<string>();
 let releaseOlderPage: (() => void) | undefined;
-let holdOlderPage = false;
-let failOlderPages = 0;
+// The thread reads the page that holds the parent of a loaded reply on its own,
+// so a journey that holds or fails that read says so before the thread opens.
+let holdOlderPage = new URLSearchParams(location.search).has("holdOlderPage");
+let failOlderPages = Number(
+  new URLSearchParams(location.search).get("failOlderPages") ?? 0,
+);
 let failLegacyContinuation = new URLSearchParams(location.search).has(
   "failLegacyContinuation",
 );
@@ -284,7 +292,15 @@ const owner = createRelaySession({
           if (filter.kinds?.includes(39002) || filter.kinds?.includes(39000))
             return [
               roster(relay, channelOne, [viewer.pubkey]),
-              metadata(relay, channelOne, "One"),
+              metadata(
+                relay,
+                channelOne,
+                "One",
+                1700000000,
+                new URLSearchParams(location.search).has("privateForward")
+                  ? [["private"]]
+                  : [],
+              ),
               roster(relay, channelTwo, [viewer.pubkey]),
               metadata(relay, channelTwo, "Two"),
             ];
@@ -472,6 +488,28 @@ Object.assign(window, {
     },
     extensionsActive() {
       return extensions.inline.snapshot().map((entry) => entry.id);
+    },
+    copiedForward: { text: "", html: "" },
+    forwardClipboard() {
+      class FixtureClipboardItem {
+        constructor(readonly items: Record<string, Blob>) {}
+      }
+      Object.defineProperty(window, "ClipboardItem", {
+        configurable: true,
+        value: FixtureClipboardItem,
+      });
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          write: async (items: FixtureClipboardItem[]) => {
+            const item = items[0];
+            window.messagesFixture.copiedForward = {
+              text: await item.items["text/plain"].text(),
+              html: await item.items["text/html"].text(),
+            };
+          },
+        },
+      });
     },
     imageClipboard(outcome: "success" | "failure", mode?: "deferred") {
       const clipboardGate = createClipboardGate();
@@ -663,7 +701,8 @@ function Fixture() {
             scope={scope}
             channelId={channelId}
             channelName={channelId}
-            messageId={root.id}
+            messageId={exactChild ?? root.id}
+            revealSelected={exactChild !== undefined}
             close={() => select(0)}
             parent={threadParent}
             onOpenLink={(url) => {

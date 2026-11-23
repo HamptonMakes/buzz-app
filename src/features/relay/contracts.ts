@@ -115,6 +115,8 @@ export type Attachment = Readonly<{
 }>;
 /** Signed URL binding a timecoded reply to one attachment in a media gallery. */
 export const MEDIA_TARGET_TAG = "buzz:media";
+export const INVOCATION_INTENT_TAG = "buzz:invocation-intent";
+export const INVOCATION_INTENT_VERSION = 1;
 /** Relay-authored membership activity, not a membership grant or user message. */
 export type MembershipChange = Readonly<{
   type: "member_joined" | "member_left" | "member_removed";
@@ -145,6 +147,16 @@ export type ChannelMessage = Readonly<{
   /** Signed `audience` tag of the original event: `agents` is coordination
    * between agents, shown quietly. Absent means everyone; unknown values too. */
   audience?: "agents";
+  /** Signed `relayed-from` tag: the signer's claim that this agent wrote the
+   * text in another chat. `verified` when the signer is the author and the
+   * agent's cryptographically verified owner; only then is it drawn as the agent's. */
+  relayedFrom?: Readonly<{
+    agent: string;
+    channelId?: string;
+    /** The signed original's text before its first blank line. */
+    notice?: string;
+    verified: boolean;
+  }>;
   /** Signed `buzz:request` tag: the agent's claim of the triggering message
    * this update belongs to, separate from its flattened reply link. */
   request?: string;
@@ -169,6 +181,8 @@ export type ChannelMessage = Readonly<{
   }>;
   /** Current body came from a replacement edit; original recipients do not bind its prose. */
   edited?: true;
+  /** The edit supplying the current body; absent when unedited. */
+  editId?: string;
   /** Offsets in `content` where attachment removal joined once-separate text; a
    * bound name never spans one. */
   attachmentSeams?: readonly number[];
@@ -278,6 +292,9 @@ export type ChannelReference =
        * open; `looking` while that lookup is queued or in flight. */
       readable?: false;
       looking?: true;
+      /** A completed lookup admitted no readable channel. Absent before the
+       * first answer or after access/cache reset; retained during rechecks. */
+      answered?: true;
     }>;
 /** Reads are side-effect-free; snapshots retain identity until their value changes.
  * Commands are idempotent requests; the store decides whether network work is needed. */
@@ -390,6 +407,11 @@ export interface ChannelQueries {
   ): void;
   /** Drops a started chat the relay did not confirm. */
   abandon?(channelId: string): void;
+  /** Reads every listed channel's newest activity, as an activity sort or
+   * filter does, until the returned release; `list().activityStatus` and
+   * each channel's `activityKnown` report progress. Absent when the session
+   * reads no activity. */
+  demandActivity?(): () => void;
   subscribeList(listener: () => void): () => void;
   window(channelId: string): ChannelWindow;
   subscribeWindow(channelId: string, listener: () => void): () => void;
