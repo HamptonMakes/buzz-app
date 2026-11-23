@@ -1653,6 +1653,9 @@ more and Show fewer: the base navigation item's type and padding with no fill, r
 `--text-subtle` and strengthening to `--text-standard` on hover and keyboard
 focus. Use it where a fill would read as another destination.
 
+A one-time tip about a control (`EducationHint`) uses `PreviewCard tone="inverse"`:
+the Tooltip's prominent fill, with its dismiss beside the copy.
+
 PreviewCard may expose supplemental actions through `actionRef`, such as copying
 an identity's full npub. Focus opens every preview at once, so immediate Tab
 navigation reaches the action; hover still waits for the pointer to rest. They remain non-modal and never take focus on hover. When no side has enough room,

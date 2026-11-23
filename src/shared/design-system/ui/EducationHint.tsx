@@ -53,10 +53,11 @@ export function EducationHint({
       trigger={children}
       side={side}
       actionRef={action}
+      tone="inverse"
       aria-label="Tip"
     >
       <div data-buzz-ui="" className="buzz-education-hint">
-        <span className="text-body-sm">{content}</span>
+        <span>{content}</span>
         <Button
           ref={action}
           variant="link"

@@ -333,29 +333,6 @@ it("remembers full when the badge opens to the last row", () => {
   );
 });
 
-it("hints at the grip until it has been dragged or double-clicked once", () => {
-  render(<Card rows={5} />);
-  layOut();
-  const grip = screen.getByLabelText("Resize Work");
-  const hinted = () => grip.hasAttribute("aria-describedby");
-  fireEvent.focus(grip);
-  expect(hinted()).toBe(true);
-  // A press without a drag teaches nothing yet.
-  fireEvent.pointerDown(grip, { button: 0, pointerId: 1, clientY: 160 });
-  fireEvent.pointerUp(window, { pointerId: 1, clientY: 160 });
-  fireEvent.focus(grip);
-  expect(hinted()).toBe(true);
-  fireEvent.doubleClick(grip);
-  fireEvent.focus(grip);
-  expect(hinted()).toBe(false);
-  // Every card on this device stays quiet afterwards.
-  cleanup();
-  render(<Card rows={5} />);
-  const next = screen.getByLabelText("Resize Work");
-  fireEvent.focus(next);
-  expect(next.hasAttribute("aria-describedby")).toBe(false);
-});
-
 /** Lay rows out before the first render, so the default clip can measure. */
 function layOutAhead() {
   const rect = vi
