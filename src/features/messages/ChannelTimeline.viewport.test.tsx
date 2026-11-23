@@ -470,9 +470,10 @@ it("wakes reading when the trailing card's layer scrolls", () => {
   screen
     .getByRole("region", { name: "Channel message history" })
     .addEventListener("reading-positioned", positioned);
-  const layer = screen.getByRole("article", { name: "Card" }).parentElement
-    ?.parentElement as HTMLElement;
-  fireEvent.scroll(layer);
+  const layer = screen
+    .getByRole("article", { name: "Card" })
+    .closest(`.${styles.trailingSheet}`);
+  fireEvent.scroll(layer as Element);
   expect(positioned).toHaveBeenCalled();
 });
 

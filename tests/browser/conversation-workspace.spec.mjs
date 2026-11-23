@@ -402,7 +402,29 @@ test.describe("trailing card", () => {
     await settle(page, sheet(page));
     const shown = await place(page);
     expect(shown.sheetMax).toBeGreaterThan(rest.sheetMax + 250);
+    // Where the card was going before it grew is short of its new Full.
+    expect(full(shown)).toBeGreaterThan(rest.sheetMax + 1);
     expect(Math.abs(shown.sheetTop - full(shown))).toBeLessThanOrEqual(1);
+  });
+
+  test("Hide brief during Full brief's scroll returns the card to Rest", async ({
+    page,
+    app,
+  }) => {
+    await open(page, app);
+    const region = history(page);
+    await select(page, { channelId: "alpha", trailing: "long" });
+    await expect(toggle(page)).toHaveText("Full brief");
+    await expectRest(page, region);
+    // Both in one task, before the first scroll lands.
+    await page.evaluate(() => {
+      const button = document.querySelector(
+        '[aria-label="Fixture card"] button[aria-expanded]',
+      );
+      button.click();
+      button.click();
+    });
+    await expectRest(page, region);
   });
 
   test("Full brief leaves a card too short to grow at Rest", async ({
@@ -471,6 +493,16 @@ test.describe("trailing card", () => {
       .poll(async () => {
         const [card, rows] = await measures();
         return rows[1] < before[1] && card.join() === rows.join();
+      })
+      .toBe(true);
+    // Compact density gives both the full width.
+    await page.evaluate(() => {
+      document.documentElement.dataset.messageDensity = "compact";
+    });
+    await expect
+      .poll(async () => {
+        const [card, rows] = await measures();
+        return rows[1] > before[1] && card.join() === rows.join();
       })
       .toBe(true);
   });

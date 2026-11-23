@@ -1106,8 +1106,12 @@ function Timeline({
     if (!element) return;
     const expand = (sheetTarget.current ?? element.scrollTop) < 1;
     const top = expand ? sheetFull(element) : 0;
-    // Already there, as a card too short to grow is: no scroll will settle it.
-    if (Math.abs(top - element.scrollTop) < 1) {
+    // Already there and still, as a card too short to grow is: no scroll will
+    // settle it. A toggle in flight scrolls back, which stops it.
+    if (
+      sheetTarget.current === undefined &&
+      Math.abs(top - element.scrollTop) < 1
+    ) {
       sheetTarget.current = undefined;
       setTrailingExpanded(top >= 1);
       return;
