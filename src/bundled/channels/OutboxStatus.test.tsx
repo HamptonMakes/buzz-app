@@ -624,4 +624,3 @@ it.each(["agent", "team", "solo", "agent-share"] as const)(
     }
   },
 );
-
