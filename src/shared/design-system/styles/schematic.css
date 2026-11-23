@@ -29,7 +29,11 @@
   }
   /* A card that grows downward stays anchored at the top, so its header
      does not drift up as rows reveal. */
-  .buzz-schematic-scene:has([data-motion="grow"], [data-motion="expand"]) {
+  .buzz-schematic-scene:has(
+    [data-motion="grow"],
+    [data-motion="expand"],
+    [data-motion="trim"]
+  ) {
     align-content: start;
   }
   .buzz-schematic-stage {
@@ -194,6 +198,10 @@
     animation: schematic-expand var(--schematic-loop) var(--ease-settle)
       var(--schematic-delay) infinite both var(--schematic-state);
   }
+  .buzz-schematic-slot[data-motion="trim"] .buzz-schematic-rows {
+    animation: schematic-trim var(--schematic-loop) var(--ease-settle)
+      var(--schematic-delay) infinite both var(--schematic-state);
+  }
   .buzz-schematic-slot[data-motion="lift"],
   .buzz-schematic-slot[data-motion="yield"] {
     --schematic-shift: calc(
@@ -334,6 +342,27 @@
         var(--schematic-unit) *
         var(--schematic-total) -
         var(--schematic-gap)
+      );
+    }
+  }
+  @keyframes schematic-trim {
+    0%,
+    30% {
+      max-block-size: calc(
+        var(--schematic-unit) *
+        var(--schematic-total) -
+        var(--schematic-gap)
+      );
+    }
+    54%,
+    100% {
+      max-block-size: max(
+        0px,
+        calc(
+          var(--schematic-unit) *
+          var(--schematic-visible) -
+          var(--schematic-gap)
+        )
       );
     }
   }

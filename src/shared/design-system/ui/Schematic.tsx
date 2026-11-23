@@ -38,7 +38,9 @@ type CardMotion =
   /** The card shrinks to its header and travels down past its neighbor. */
   | "lift"
   /** The card moves up to fill the lifted card's place. */
-  | "yield";
+  | "yield"
+  /** Every row shows, then the card trims down to its visible rows. */
+  | "trim";
 
 export function SchematicCard({
   header,

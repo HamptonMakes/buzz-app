@@ -6,7 +6,8 @@ import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 import type { SeenStore } from "../../shared/design-system/ui/EducationHint";
 import { SeenContext } from "./seen-context";
-import { SidebarTour, sidebarTourKey, sidebarTourPages } from "./SidebarTour";
+import { SidebarTour, sidebarTourPages } from "./SidebarTour";
+import { sidebarTourKey, stayMessyKey } from "./seen-context";
 
 const firstTitle = "Meet the new sidebar";
 
@@ -55,9 +56,10 @@ test("sidebar tour waits for the layout, then shows its pages in order", async (
     expect(screen.getByText(page.title)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Next" }));
   }
-  expect(screen.getByText("Reorder workspaces")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Got it" }));
-  expect(screen.queryByText("Reorder workspaces")).toBeNull();
+  expect(screen.getByText("Want a tidier sidebar?")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Tidy it up" }));
+  expect(screen.queryByText("Want a tidier sidebar?")).toBeNull();
+  expect(marks.has(stayMessyKey)).toBe(false);
   expect(marks.has(sidebarTourKey)).toBe(true);
 });
 

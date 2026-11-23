@@ -9,11 +9,7 @@ import {
 } from "../../shared/design-system/ui/Schematic";
 import { Tour, type TourPage } from "../../shared/design-system/ui/Tour";
 import { useUnseen } from "../../shared/design-system/ui/EducationHint";
-import { useSeen } from "./seen-context";
-
-// Remembered through Seen for the signed-in identity, like the grip's tip. A
-// later sidebar release uses a new key so the tour shows once more.
-export const sidebarTourKey = "buzz.channels/sidebar-tour-workspaces-1";
+import { sidebarTourKey, stayMessyKey, useSeen } from "./seen-context";
 
 export const sidebarTourPages: readonly TourPage[] = [
   {
@@ -119,6 +115,23 @@ export const sidebarTourPages: readonly TourPage[] = [
       </SchematicScene>
     ),
   },
+  {
+    id: "tidy",
+    title: "Want a tidier sidebar?",
+    description:
+      "We’ll trim each workspace to its 7 most recent. Drag a handle anytime to show more.",
+    visual: (
+      <SchematicScene>
+        <SchematicCard visibleRows={2} motion="trim">
+          <SchematicRow lead="channel" />
+          <SchematicRow lead="person" />
+          <SchematicRow lead="chat" />
+          <SchematicRow lead="channel" />
+          <SchematicRow lead="person" />
+        </SchematicCard>
+      </SchematicScene>
+    ),
+  },
 ];
 
 /** Introduces custom workspaces once per device, beside the sidebar. */
@@ -146,7 +159,13 @@ export function SidebarTour({
       anchor={anchor}
       side="right"
       align="end"
-      onDismiss={() => seen?.mark(sidebarTourKey)}
+      finishLabel="Tidy it up"
+      declineLabel="Stay messy"
+      onDismiss={(reason) => {
+        // Only a yes trims; closing early leaves the sidebar as it was.
+        if (reason !== "finished") seen?.mark(stayMessyKey);
+        seen?.mark(sidebarTourKey);
+      }}
     />
   );
 }

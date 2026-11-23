@@ -9,7 +9,9 @@ import {
 } from "react";
 import { readView, subscribeView, writeView } from "../../shared/view-state";
 import { EducationHint } from "../../shared/design-system/ui/EducationHint";
-import { useSeen } from "./seen-context";
+import { sidebarTourKey, stayMessyKey, useSeen } from "./seen-context";
+
+const never = () => () => {};
 import { Button } from "../../shared/design-system/ui/Button";
 import { needsYou } from "./conversation-rows";
 import styles from "./Channels.module.css";
@@ -41,12 +43,22 @@ function savedSizes(scope: string): Record<string, number> {
  * A card's size, remembered on this device: how many conversations it shows,
  * the same in a list or as icons, or full. Only the grip sets it. Toggling
  * opens a card full, and closes a full card back to the default.
+ *
+ * A card never sized shows everything, like the earlier sidebar, until the
+ * tour's "Tidy it up" trims it to the default. "Stay messy" keeps it full.
  */
 export function useSidebarCardSize(scope: string, card: string) {
-  const size = useSyncExternalStore(
+  const seen = useSeen();
+  const saved = useSyncExternalStore(
     (change) => subscribeView(scope, change),
     () => savedSizes(scope)[card],
   );
+  const untidy = useSyncExternalStore(
+    seen?.subscribe ?? never,
+    () =>
+      seen?.has(sidebarTourKey) === false || seen?.has(stayMessyKey) === true,
+  );
+  const size = saved ?? (untidy ? ALL : undefined);
   const resize = (next: number | undefined) => {
     const { [card]: _, ...rest } = savedSizes(scope);
     writeView(
@@ -55,7 +67,8 @@ export function useSidebarCardSize(scope: string, card: string) {
       next === undefined ? rest : { ...rest, [card]: next },
     );
   };
-  const toggle = () => resize(size === ALL ? undefined : ALL);
+  // Closing full lands on the default explicitly, so it holds while untidy.
+  const toggle = () => resize(size === ALL ? DEFAULT_SIZE : ALL);
   return [size, resize, toggle] as const;
 }
 
@@ -93,23 +106,28 @@ export function SidebarCardResize({
   const [shown, setShown] = useState(0);
   // Conversations past the edge that wait on you, and the lowest one's row.
   const [waiting, setWaiting] = useState<Waiting>(none);
-  const apply = useCallback((rows: HTMLElement, size: number | undefined) => {
-    setShown(clip(rows, size));
-    const next = waitingPastEdge(rows);
-    setWaiting((previous) =>
-      previous.count === next.count && previous.lowest === next.lowest
-        ? previous
-        : next,
-    );
-  }, []);
+  const apply = useCallback(
+    (rows: HTMLElement, size: number | undefined, glide = false) => {
+      setShown(clip(rows, size, glide));
+      const next = waitingPastEdge(rows);
+      setWaiting((previous) =>
+        previous.count === next.count && previous.lowest === next.lowest
+          ? previous
+          : next,
+      );
+    },
+    [],
+  );
   const saved = useRef(size);
   const seen = useSeen();
   // Apply the saved size before paint, and again whenever rows come, go,
   // re-wrap or first get a size (a card opened after starting closed). Only
   // the grip saves a size; settling never does.
   useLayoutEffect(() => {
+    // A new size (not a first render) glides, such as the tour's trim.
+    const glide = saved.current !== size;
     saved.current = size;
-    if (list.current && !stop.current) apply(list.current, size);
+    if (list.current && !stop.current) apply(list.current, size, glide);
   }, [size, apply]);
   useEffect(() => {
     const rows = list.current;
@@ -331,7 +349,11 @@ export function SidebarCardResize({
  * round up to fill their last row. Rows past the clip are inert, so focus and
  * the keyboard skip what the card hides. Returns how many rows show.
  */
-function clip(list: HTMLElement, size: number | undefined): number {
+function clip(
+  list: HTMLElement,
+  size: number | undefined,
+  glide = false,
+): number {
   const ends = stops(list);
   const total = ends.length;
   const wanted = Math.min(size ?? DEFAULT_SIZE, total);
@@ -343,6 +365,12 @@ function clip(list: HTMLElement, size: number | undefined): number {
       ? Math.min(through(ends, ends[wanted - 1] ?? 0), total)
       : wanted;
   const clipped = shown < total;
+  // An unclipped list has no height to transition from: start the glide at
+  // its full height.
+  if (glide && clipped && laidOut && !list.style.maxHeight) {
+    list.style.maxHeight = `${list.scrollHeight}px`;
+    void list.offsetHeight;
+  }
   setMaxHeight(list, clipped && laidOut ? `${ends[shown - 1] ?? 0}px` : "");
   list
     .querySelectorAll<HTMLElement>("[data-card-row]")

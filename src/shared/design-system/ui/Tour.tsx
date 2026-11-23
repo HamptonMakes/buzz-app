@@ -28,7 +28,11 @@ export type TourPage = {
 type TourProps = {
   open: boolean;
   /** Called once the person finishes or dismisses the tour. */
-  onDismiss: (reason: "finished" | "dismissed") => void;
+  onDismiss: (reason: "finished" | "declined" | "dismissed") => void;
+  /** The last page's forward action; "Got it" by default. */
+  finishLabel?: string;
+  /** Turns the last page into a choice: this secondary action declines. */
+  declineLabel?: string;
   pages: readonly TourPage[];
   /** Names the tour for assistive tech, such as "What's new in the sidebar". */
   label: string;
@@ -46,6 +50,8 @@ type TourProps = {
 export function Tour({
   open,
   onDismiss,
+  finishLabel = "Got it",
+  declineLabel,
   pages,
   label,
   side = "right",
@@ -158,17 +164,31 @@ export function Tour({
               <span />
             )}
             <span className="buzz-tour-actions">
-              {index > 0 && (
-                <Button variant="ghost" size="sm" onClick={() => go(index - 1)}>
-                  Back
+              {last && declineLabel ? (
+                <Button
+                  variant="subtle"
+                  size="sm"
+                  onClick={() => onDismiss("declined")}
+                >
+                  {declineLabel}
                 </Button>
+              ) : (
+                index > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => go(index - 1)}
+                  >
+                    Back
+                  </Button>
+                )
               )}
               <Button
                 variant="prominent"
                 size="sm"
                 onClick={() => (last ? onDismiss("finished") : go(index + 1))}
               >
-                {last ? "Got it" : "Next"}
+                {last ? finishLabel : "Next"}
               </Button>
             </span>
           </div>
