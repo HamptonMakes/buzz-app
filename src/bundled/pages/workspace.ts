@@ -9,6 +9,7 @@ import type { ChannelDetailsCapability } from "../../features/relay/channel-deta
 import type { RelaySession } from "../../features/relay/session";
 import { hasEventProof, type RelayEvent } from "../../features/relay/events";
 import { channelIdentity } from "../../features/relay/channel-labels";
+import { PublishRejected } from "../../features/relay/outbox";
 import {
   AGENTS_LABEL,
   NoteConflict,
@@ -45,6 +46,8 @@ type CreatingAgent = {
   read: NoteRead;
   publish: NotePublish;
 };
+export class NoteCreationUnconfirmed extends Error {}
+
 const documentLabel = (id: string) => `${NOTE_LABEL}.${id}`;
 
 /** Feature-owned orchestration; the session and host retain all signing/access authority. */
@@ -88,7 +91,11 @@ export function createNotesWorkspace(session: RelaySession) {
     return events;
   };
   const read: NoteRead = snapshot;
-  const publish: NotePublish = async (template, caller) => {
+  const publish = async (
+    template: Parameters<NotePublish>[0],
+    caller?: AbortSignal,
+    onDelivery?: () => void,
+  ) => {
     const active = signal(caller);
     const writer = session.configArtifactWriter;
     if (!writer)
@@ -102,6 +109,7 @@ export function createNotesWorkspace(session: RelaySession) {
       active,
     );
     active.throwIfAborted();
+    onDelivery?.();
     await writer.publish(event, active);
     active.throwIfAborted();
     return event;
@@ -412,14 +420,17 @@ export function createNotesWorkspace(session: RelaySession) {
       throw new Error(
         "This storage already contains another doc. Use a new doc ID.",
       );
+    const template = noteTemplate(address, input);
     if (agent) await session.memberAdditions.add(channel, agent.key);
+    const active = signal(caller);
+    active.throwIfAborted();
+    let deliveryStarted = !!agent;
     try {
-      const active = signal(caller);
-      active.throwIfAborted();
-      const event = await (agent?.publish ?? publish)(
-        noteTemplate(address, input),
-        active,
-      );
+      const event = agent
+        ? await agent.publish(template, active)
+        : await publish(template, active, () => {
+            deliveryStarted = true;
+          });
       const current = await readNote(agent?.read ?? read, address, active);
       if (current.revision !== event.id)
         throw new Error(
@@ -427,8 +438,11 @@ export function createNotesWorkspace(session: RelaySession) {
         );
       return current;
     } catch (error) {
-      throw new Error(
-        `Doc creation was not confirmed. Reuse doc ID ${input.id} to recover its storage and check the result. ${error instanceof Error ? error.message : ""}`,
+      if (!deliveryStarted) throw error;
+      const message = `Reuse doc ID ${input.id} to recover its storage and check the result. ${error instanceof Error ? error.message : ""}`;
+      if (error instanceof PublishRejected) throw new Error(message);
+      throw new NoteCreationUnconfirmed(
+        `Doc creation was not confirmed. ${message}`,
       );
     }
   }

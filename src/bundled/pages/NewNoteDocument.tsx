@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { noteKey, type Note } from "./model";
-import type { NotesWorkspace } from "./workspace";
+import { NoteCreationUnconfirmed, type NotesWorkspace } from "./workspace";
 import { DotsThreeIcon } from "../../shared/design-system/icons";
 import { IconButton } from "../../shared/design-system/ui/IconButton";
 import {
@@ -132,18 +132,18 @@ export function NewNoteDocument({
     pending.current = true;
     setBusy(true);
     setError("");
+    const proposed = attempt.current ?? {
+      ...latest.current,
+      title: latest.current.title.trim() || "Untitled doc",
+    };
     try {
-      // Reuse both UUID and payload after an uncertain creation receipt.
-      // Later typing is retained as a draft against the accepted first revision.
-      attempt.current ??= {
-        ...latest.current,
-        title: latest.current.title.trim() || "Untitled doc",
-      };
-      const note = await workspace.create(attempt.current, controller.signal);
+      const note = await workspace.create(proposed, controller.signal);
       controller.signal.throwIfAborted();
       setAccepted({ note, editAtStart });
     } catch (error) {
       if (controller.signal.aborted) return;
+      // Keep the original payload only while its receipt is uncertain.
+      if (error instanceof NoteCreationUnconfirmed) attempt.current = proposed;
       setError(
         error instanceof Error ? error.message : "The doc could not be saved.",
       );

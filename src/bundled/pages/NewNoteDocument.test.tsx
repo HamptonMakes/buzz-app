@@ -141,15 +141,14 @@ it.each(["typing", "composition"])(
 
 it("pauses on an uncertain receipt and retries the original identity and payload", async () => {
   const f = await fixture({ title: "First title" });
-  f.create.mockImplementationOnce(async (...args) => {
-    await f.realCreate(...args);
-    throw new Error("Receipt lost");
-  });
+  f.loseNextReceipt();
   await advance(1500);
   await act(async () => {
     await f.create.mock.results[0]?.value.catch(() => {});
   });
-  expect(screen.getByRole("alert")).toHaveTextContent("Receipt lost");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Doc creation was not confirmed",
+  );
   fireEvent.change(f.title, { target: { value: "Edited after failure" } });
   await advance(15_000);
   expect(f.create).toHaveBeenCalledOnce();
@@ -161,6 +160,23 @@ it("pauses on an uncertain receipt and retries the original identity and payload
     "Edited after failure",
   );
   expect(f.heads.size).toBe(1);
+});
+
+it("retries a locally rejected first draft with corrected text and the same ID", async () => {
+  const f = await fixture({ title: "x".repeat(513) });
+  await advance(1500);
+  await act(async () => {
+    await f.create.mock.results[0]?.value.catch(() => {});
+  });
+  expect(screen.getByRole("alert")).toBeVisible();
+  expect(f.channels.size).toBe(0);
+  fireEvent.change(f.title, { target: { value: "Shorter title" } });
+  fireEvent.click(screen.getByRole("button", { name: "Retry save" }));
+  await f.finishCreate();
+  expect(f.onCreated.mock.calls[0]?.[0]).toMatchObject({
+    id: f.props.initial.id,
+    title: "Shorter title",
+  });
 });
 
 it("defers first save while a draft is hidden or the user is still typing", async () => {
