@@ -63,8 +63,8 @@ export function EducationHint({
           ref={action}
           aria-label="Dismiss tip"
           icon={<XIcon />}
-          variant="ghost"
-          size="xs"
+          variant="bare"
+          size="text"
           onClick={() => seen?.mark(seenKey)}
         />
       </span>
