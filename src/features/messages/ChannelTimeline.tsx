@@ -1112,7 +1112,6 @@ function Timeline({
       sheetTarget.current === undefined &&
       Math.abs(top - element.scrollTop) < 1
     ) {
-      sheetTarget.current = undefined;
       setTrailingExpanded(top >= 1);
       return;
     }
