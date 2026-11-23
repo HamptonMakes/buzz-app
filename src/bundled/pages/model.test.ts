@@ -290,24 +290,33 @@ describe("channel orchestration", () => {
         created_at: 2_000_000_000,
       }),
     );
-    const note = await f.workspace.create({
-      id: crypto.randomUUID(),
-      title: "Plan",
-      markdown: "Work",
-      agent: f.ned.pubkey,
-    });
+    const set = f.tool("page_set");
+    const note = JSON.parse(
+      (await set.call(
+        f.client(f.ned),
+        {},
+        {
+          id: crypto.randomUUID(),
+          title: "Plan",
+          text: "Work",
+        },
+      )) as string,
+    );
     expect(f.channels.get(note.channel)?.roles).toEqual({
       [f.viewer.pubkey]: "owner",
       [f.ned.pubkey]: "bot",
     });
     const before = f.channels.size;
     await expect(
-      f.workspace.create({
-        id: crypto.randomUUID(),
-        title: "No",
-        markdown: "Work",
-        agent: f.carl.pubkey,
-      }),
+      set.call(
+        f.client(),
+        {},
+        {
+          id: crypto.randomUUID(),
+          title: "No",
+          text: "Work",
+        },
+      ),
     ).rejects.toThrow(/ownership could not be verified/);
     expect(f.channels.size).toBe(before);
   });
@@ -361,16 +370,61 @@ describe("channel orchestration", () => {
     channel.labels = ["buzz.notes", `buzz.notes.${id}`];
     channel.updated++;
     await expect(
-      f.workspace.create({
-        id,
-        title: "New",
-        markdown: "Draft",
-        agent: f.carl.pubkey,
-      }),
+      f.tool("page_set").call(
+        f.client(),
+        {},
+        {
+          id,
+          title: "New",
+          text: "Draft",
+        },
+      ),
     ).rejects.toThrow(/another doc/);
     expect(channel.roles[f.carl.pubkey]).toBeUndefined();
     expect(f.accepted.filter((event) => event.kind === 9000)).toEqual([]);
   });
+  it("checks the creating agent's current read access on every recovery", async () => {
+    const f = await fixture();
+    const note = f.seed("Private title", "Private draft", false);
+    const args = { id: note.id, title: note.title, text: note.markdown };
+    const set = f.tool("page_set");
+    const client = f.client();
+    for (const text of [note.markdown, "New draft"]) {
+      await expect(set.call(client, {}, { ...args, text })).rejects.toThrow(
+        /^This doc is unavailable or you no longer have access\.$/,
+      );
+    }
+    expect(f.accepted.filter((event) => event.kind === 9000)).toEqual([]);
+
+    const channel = f.channels.get(note.channel);
+    if (!channel) throw new Error("Missing channel");
+    channel.roles[f.carl.pubkey] = "guest";
+    channel.updated++;
+    await expect(set.call(client, {}, args)).resolves.toContain(
+      "Private draft",
+    );
+    await expect(
+      set.call(client, {}, { ...args, text: "New draft" }),
+    ).rejects.toThrow(/Current doc:.*Private draft/);
+  });
+
+  it("resumes an empty storage channel and confirms the revision as the creating agent", async () => {
+    const f = await fixture();
+    const args = { id: crypto.randomUUID(), title: "Plan", text: "Draft" };
+    const set = f.tool("page_set");
+    f.failNextArtifact();
+    await expect(set.call(f.client(), {}, args)).rejects.toThrow(
+      /Reuse doc ID/,
+    );
+    expect(f.heads.size).toBe(0);
+    const channel = [...f.channels.values()][0];
+    if (!channel) throw new Error("Missing channel");
+    await expect(set.call(f.client(), {}, args)).resolves.toContain("Draft");
+    expect(f.channels.size).toBe(1);
+    expect(channel.roles[f.carl.pubkey]).toBe("bot");
+    expect(f.heads.get(args.id)?.pubkey).toBe(f.carl.pubkey);
+  });
+
   it("refuses creation before allocating storage on an unsupported connection", async () => {
     const f = await fixture();
     const unsupported = createNotesWorkspace({

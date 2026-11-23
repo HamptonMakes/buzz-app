@@ -39,7 +39,12 @@ export type NotesPage = {
   more: boolean;
   cursor?: Cursor | undefined;
 };
-export type NewNote = NoteDraft & { id: string; agent?: string };
+type NewNote = NoteDraft & { id: string };
+type CreatingAgent = {
+  key: string;
+  read: NoteRead;
+  publish: NotePublish;
+};
 const documentLabel = (id: string) => `${NOTE_LABEL}.${id}`;
 
 /** Feature-owned orchestration; the session and host retain all signing/access authority. */
@@ -309,7 +314,7 @@ export function createNotesWorkspace(session: RelaySession) {
   async function create(
     input: NewNote,
     caller?: AbortSignal,
-    author: NotePublish = publish,
+    agent?: CreatingAgent,
   ) {
     if (!session.configArtifactWriter)
       throw new Error(
@@ -319,7 +324,7 @@ export function createNotesWorkspace(session: RelaySession) {
     if (!UUID.test(input.id))
       throw new Error("Use a new doc UUID and reuse it when retrying.");
     // Agent creation admits only its verified caller, never the owner’s inventory.
-    if (input.agent) await verifyCreatingAgent(input.agent, caller);
+    if (agent) await verifyCreatingAgent(agent.key, caller);
     if (!session.viewer || !session.relayAuthor)
       throw new Error("Connect to create a doc.");
     const label = documentLabel(input.id);
@@ -381,9 +386,9 @@ export function createNotesWorkspace(session: RelaySession) {
       caller,
     );
     if (existing[0]) {
-      const note = parseNote(existing[0]);
-      if (!note || note.id !== input.id || note.channel !== channel)
-        throw new Error("The existing doc has an unsupported format.");
+      // Owner access can establish that storage is occupied. Only the caller's
+      // read can supply content, including the current revision in a conflict.
+      const note = await readNote(agent?.read ?? read, address, signal(caller));
       if (
         note.deleted ||
         note.title !== input.title.trim() ||
@@ -407,10 +412,15 @@ export function createNotesWorkspace(session: RelaySession) {
       throw new Error(
         "This storage already contains another doc. Use a new doc ID.",
       );
-    if (input.agent) await session.memberAdditions.add(channel, input.agent);
+    if (agent) await session.memberAdditions.add(channel, agent.key);
     try {
-      const event = await author(noteTemplate(address, input), caller);
-      const current = await readNote(read, address, caller);
+      const active = signal(caller);
+      active.throwIfAborted();
+      const event = await (agent?.publish ?? publish)(
+        noteTemplate(address, input),
+        active,
+      );
+      const current = await readNote(agent?.read ?? read, address, active);
       if (current.revision !== event.id)
         throw new Error(
           "The doc has changed. Open its latest revision before editing.",

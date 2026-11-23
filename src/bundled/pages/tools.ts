@@ -198,9 +198,13 @@ export function noteTools(
         if (args.channel === undefined) {
           const value = workspace(client);
           const note = await value.create(
-            { ...draft, id: string(args, "id"), agent: client.pubkey },
+            { ...draft, id: string(args, "id") },
             undefined,
-            (template) => client.publish(template),
+            {
+              key: client.pubkey,
+              read: asReader(client),
+              publish: (template) => client.publish(template),
+            },
           );
           return format(note, community(client));
         }
