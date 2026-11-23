@@ -198,6 +198,83 @@ test("thread splitter tracks the conversation reserve as interface size changes"
 
   await resize.press("Home");
   await measure("150% Home");
+
+  const thread = page.getByRole("complementary", {
+    name: "Thread",
+    exact: true,
+  });
+  await thread
+    .getByRole("textbox", { name: "Reply to thread", exact: true })
+    .fill("A thread draft");
+  for (const [viewport, scale] of [
+    [808, 0.8],
+    [872, 0.9],
+    [808, 12.825 / 16],
+  ]) {
+    await page.evaluate((scale) => {
+      document.documentElement.style.setProperty("--buzz-text-scale", scale);
+    }, String(scale));
+    await page.setViewportSize({ width: viewport, height: 900 });
+    await expect(page.locator("html")).toHaveCSS(
+      "font-size",
+      `${16 * scale}px`,
+    );
+    const sidebar = page.getByRole("separator", { name: "Resize sidebar" });
+    await sidebar.press("Home");
+    await expect(sidebar).toHaveAttribute(
+      "aria-valuenow",
+      await sidebar.getAttribute("aria-valuemin"),
+    );
+    await expect(resize).toBeVisible();
+    await resize.press("End");
+    const narrow = await measure(`${scale * 100}% ${viewport}px End`);
+    if (scale === 12.825 / 16) {
+      const precision = await board.evaluate((workspace) => {
+        const container = workspace.closest('[aria-label="Channels"]');
+        const insets = (element) => {
+          const style = getComputedStyle(element);
+          return [
+            style.paddingLeft,
+            style.paddingRight,
+            style.borderLeftWidth,
+            style.borderRightWidth,
+          ].map(Number.parseFloat);
+        };
+        const probe = document.createElement("div");
+        probe.style.cssText = "position:absolute;width:100cqw;height:0";
+        workspace.append(probe);
+        const cqw = probe.getBoundingClientRect().width;
+        probe.remove();
+        return {
+          fontSize: getComputedStyle(document.documentElement).fontSize,
+          queryContainer: getComputedStyle(container).containerType,
+          containerWidth: container.getBoundingClientRect().width,
+          containerInsets: insets(container),
+          boardWidth: workspace.getBoundingClientRect().width,
+          boardInsets: insets(workspace),
+          clientWidth: workspace.clientWidth,
+          cqw,
+        };
+      });
+      console.log(`Thread fractional workspace: ${JSON.stringify(precision)}`);
+      expect(precision.fontSize).toBe("12.825px");
+      expect(precision.queryContainer).toBe("inline-size");
+      expect(precision.containerInsets).toEqual([0, 0, 0, 0]);
+      expect(precision.boardInsets).toEqual([0, 0, 0, 0]);
+      expect(precision.containerWidth).toBe(539.546875);
+      expect(precision.boardWidth).toBe(precision.cqw);
+      expect(precision.boardWidth).toBe(precision.containerWidth);
+      expect(precision.clientWidth).toBe(540);
+    }
+    expect.soft(narrow.min).toBeLessThanOrEqual(narrow.now);
+    expect.soft(narrow.now).toBe(narrow.max);
+    expect.soft(narrow.max).toBe(Math.round(narrow.pane.width));
+    expect.soft(narrow.pane.right).toBeLessThanOrEqual(viewport);
+    await thread
+      .getByRole("button", { name: "Send message", exact: true })
+      .click({ trial: true });
+    await expect(resize).toBeVisible();
+  }
 });
 
 // Browser-only: child-only activity layout and composer resizing must preserve

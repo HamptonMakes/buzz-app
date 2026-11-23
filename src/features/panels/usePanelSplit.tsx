@@ -115,6 +115,7 @@ function PanelSplitHandle({
   mainMinRem: number | undefined;
 }) {
   const [available, setAvailable] = useState(0);
+  const [contentWidth, setContentWidth] = useState(0);
   const [rootFontSize, setRootFontSize] = useState(DEFAULT_ROOT_FONT_SIZE);
   useEffect(() => {
     const element = ref.current;
@@ -123,6 +124,8 @@ function PanelSplitHandle({
     const measure = () => {
       setAvailable(element.clientWidth);
       if (mainMinRem === undefined) return;
+      // The borderless board fills the query container that supplies 100cqw.
+      setContentWidth(element.getBoundingClientRect().width);
       const fontSize = getComputedStyle(root).fontSize;
       const pixels = fontSize.endsWith("px")
         ? Number.parseFloat(fontSize)
@@ -145,9 +148,18 @@ function PanelSplitHandle({
       appearanceObserver?.disconnect();
     };
   }, [ref, mainMinRem]);
-  const minimum = Math.max(min, available * (1 - (primary?.maxRatio ?? 1)));
+  const floor = Math.max(min, available * (1 - (primary?.maxRatio ?? 1)));
   const reserve = mainMinRem === undefined ? 320 : mainMinRem * rootFontSize;
-  const max = Math.max(minimum, available - reserve);
+  const reachable =
+    (mainMinRem === undefined ? available : contentWidth) - reserve;
+  const constrained =
+    mainMinRem !== undefined && available > 0 && reachable < floor;
+  const minimum = constrained ? Math.max(0, Math.round(reachable)) : floor;
+  const max = constrained
+    ? minimum
+    : mainMinRem !== undefined && available > 0
+      ? Math.floor(reachable)
+      : Math.max(minimum, reachable);
   const clamp = (width: number) => Math.min(max, Math.max(minimum, width));
   const width = clamp(
     preferred ??
