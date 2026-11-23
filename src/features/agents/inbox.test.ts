@@ -307,29 +307,37 @@ it("applies a signed roster that removes the agent even when metadata is missing
   }
 });
 
-it("judges a read's DMs by that read, even when they overflow the fact cache", async () => {
-  const f = fixture();
-  const dms = Array.from({ length: 130 }, (_, i) => `dm-${i}`);
-  const mentions = dms.map((id, i) =>
-    message(sibling, id, `ask ${i}`, 100 + i, [["p", agent.pubkey]]),
-  );
-  f.query.mockImplementation(async (filters: readonly ReadFilter[]) =>
-    filters[0]?.kinds?.includes(39000)
-      ? eventsDto(
-          dms.flatMap((id) => [
-            metadata(relay, id, id, 1, [["private"], ["t", "dm"]]),
-            roster(relay, id, [agent.pubkey, sibling.pubkey], 1),
-          ]),
-        )
-      : eventsDto(mentions),
-  );
-  try {
-    const read = await f.inbox.readAsAgent(
-      { ids: mentions.map(({ id }) => id), limit: mentions.length },
-      signal(),
+it.each([130, 260])(
+  "judges a read's %i DMs by that read, within the relay read limit",
+  async (count) => {
+    const f = fixture();
+    const dms = Array.from({ length: count }, (_, i) => `dm-${i}`);
+    const mentions = dms.map((id, i) =>
+      message(sibling, id, `ask ${i}`, 100 + i, [["p", agent.pubkey]]),
     );
-    expect(read).toHaveLength(130);
-  } finally {
-    f.controller.abort();
-  }
-});
+    f.query.mockImplementation(async (filters: readonly ReadFilter[]) =>
+      filters[0]?.kinds?.includes(39000)
+        ? eventsDto(
+            dms
+              .filter((id) => filters[0]?.["#d"]?.includes(id))
+              .flatMap((id) => [
+                metadata(relay, id, id, 1, [["private"], ["t", "dm"]]),
+                roster(relay, id, [agent.pubkey, sibling.pubkey], 1),
+              ]),
+          )
+        : eventsDto(mentions),
+    );
+    try {
+      const read = await f.inbox.readAsAgent(
+        { ids: mentions.map(({ id }) => id), limit: mentions.length },
+        signal(),
+      );
+      expect(read).toHaveLength(count);
+      for (const [filters] of f.query.mock.calls)
+        for (const filter of filters as readonly ReadFilter[])
+          expect(filter.limit).toBeLessThanOrEqual(500);
+    } finally {
+      f.controller.abort();
+    }
+  },
+);

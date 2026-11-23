@@ -9,6 +9,9 @@ import {
 import { createRelayReader } from "../relay/reader";
 import type { AgentReads } from "./reads";
 
+/** Each channel has a metadata and a roster event; reads cap at 500. */
+const FACTS_PER_READ = 250;
+
 const channelOf = (event: RelayEvent) =>
   event.tags.find(([key]) => key === "h")?.[1];
 
@@ -109,17 +112,35 @@ export class AgentInbox {
     signal: AbortSignal,
   ): Promise<{ partial: string[]; dms: string[] }> {
     if (!ids.length) return { partial: [], dms: [] };
-    const events = await this.reader.reader.read(
-      [
-        {
-          kinds: [39000, 39002],
-          authors: [this.authority],
-          "#d": [...new Set(ids)],
-          limit: ids.length * 2,
-        },
-      ],
-      { signal: AbortSignal.any([this.lifetime, signal]), fresh: true },
-    );
+    const unique = [...new Set(ids)];
+    const options = {
+      signal: AbortSignal.any([this.lifetime, signal]),
+      fresh: true,
+    };
+    const events = (
+      await Promise.all(
+        Array.from(
+          { length: Math.ceil(unique.length / FACTS_PER_READ) },
+          (_, index) => {
+            const batch = unique.slice(
+              index * FACTS_PER_READ,
+              (index + 1) * FACTS_PER_READ,
+            );
+            return this.reader.reader.read(
+              [
+                {
+                  kinds: [39000, 39002],
+                  authors: [this.authority],
+                  "#d": batch,
+                  limit: batch.length * 2,
+                },
+              ],
+              options,
+            );
+          },
+        ),
+      )
+    ).flat();
     const kinds = new Map<string, Set<number>>();
     const excluded = new Set<string>();
     const discovery = new DiscoveryState(
