@@ -36,13 +36,18 @@ function createMessagesServer() {
   });
 }
 
-async function withMessagesFixture(page, run, search = "") {
+async function withMessagesFixture(
+  page,
+  run,
+  search = "",
+  fixture = "messages",
+) {
   const server = await createMessagesServer();
   await server.listen();
   try {
     const address = server.httpServer.address();
     await page.goto(
-      `http://127.0.0.1:${address.port}/tests/fixtures/messages.html${search}`,
+      `http://127.0.0.1:${address.port}/tests/fixtures/${fixture}.html${search}`,
     );
     await run();
   } finally {
@@ -79,36 +84,51 @@ function containedWithin(inner, outer) {
 test("sending /me preserves the authored event and renders an action in its thread", async ({
   page,
 }) => {
-  await withMessagesFixture(page, async () => {
-    const thread = page.getByRole("complementary", {
-      name: "Thread",
-      exact: true,
-    });
-    const draft = thread.getByRole("textbox", {
-      name: "Reply to thread",
-      exact: true,
-    });
-    await draft.fill("/me eats a drumstick");
-    await draft.press("Enter");
-    const action = thread
-      .locator("[data-message-id]")
-      .filter({ hasText: "eats a drumstick" });
-    await expect(
-      action.getByText("eats a drumstick", { exact: true }),
-    ).toBeVisible();
-    await expect(action).toContainText("Fixture Reader eats a drumstick");
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            window.messagesFixture.report.publications.filter(
-              (event) => event.content === "/me eats a drumstick",
-            ).length,
-        ),
-      )
-      .toBe(1);
-    await expect(draft).toHaveJSProperty("value", "");
-  });
+  await withMessagesFixture(
+    page,
+    async () => {
+      const root = page
+        .locator("[data-message-id]")
+        .filter({ hasText: "goes off to fix that bug right now" });
+      await root
+        .getByText("goes off to fix that bug right now", { exact: true })
+        .hover();
+      await root.getByRole("button", { name: "Reply", exact: true }).click();
+      const thread = page.getByRole("complementary", {
+        name: "Thread",
+        exact: true,
+      });
+      const draft = thread.getByRole("textbox", {
+        name: "Reply to thread",
+        exact: true,
+      });
+      await draft.fill("/me eats a drumstick");
+      await draft.press("Enter");
+      const action = thread
+        .locator("[data-message-id]")
+        .filter({ hasText: "eats a drumstick" });
+      await expect(
+        action.getByText("eats a drumstick", { exact: true }),
+      ).toBeVisible();
+      await expect(action).toContainText("Alex Morgan eats a drumstick");
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              window.messagesFixture.report.publications.filter(
+                (event) => event.content === "/me eats a drumstick",
+              ).length,
+          ),
+        )
+        .toBe(1);
+      await expect(draft).toHaveJSProperty("value", "");
+      await expect(
+        thread.getByRole("button", { name: "Try again", exact: true }),
+      ).toHaveCount(0);
+    },
+    "",
+    "narrated-actions",
+  );
 });
 
 test("media review stage contains portrait video and image media", async ({
