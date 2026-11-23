@@ -158,7 +158,7 @@ export function SidebarTour({
       pages={sidebarTourPages}
       anchor={anchor}
       side="right"
-      align="end"
+      align="center"
       finishLabel="Tidy it up"
       declineLabel="Stay messy"
       onDismiss={(reason) => {
