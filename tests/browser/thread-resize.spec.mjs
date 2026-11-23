@@ -120,6 +120,86 @@ test("thread stays beside the channel whenever both panes fit", async ({
   ).toBeHidden();
 });
 
+test("thread splitter tracks the conversation reserve as interface size changes", async ({
+  page,
+  app,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, app);
+  await page.getByRole("separator", { name: "Resize sidebar" }).press("Home");
+  const conversation = page.getByRole("article", {
+    name: "Conversation",
+    exact: true,
+  });
+  const root = app.histories
+    .get("primary/alpha")
+    .find((row) => row.content.startsWith("Thread root"));
+  await conversation
+    .locator(`[data-message-id="${root.id}"]`)
+    .getByRole("button", { name: /^View thread:/ })
+    .click();
+  const resize = page.getByRole("separator", {
+    name: "Resize main and secondary panels",
+  });
+  await expect(resize).toBeVisible();
+  const surface = page.getByRole("region", { name: "Channels", exact: true });
+  await surface.evaluate((element) => {
+    element.style.inlineSize = `${element.clientWidth}px`;
+  });
+  const board = page.locator(":has(> [data-panel-dock])");
+  const measure = async (step) => {
+    await frames(page);
+    await animationsSettled(board);
+    await frames(page);
+    const geometry = await resize.evaluate((handle) => {
+      const dock = handle.parentElement;
+      const workspace = dock.parentElement;
+      const { x, right, width } = dock.getBoundingClientRect();
+      return {
+        available: workspace.clientWidth,
+        min: Number(handle.getAttribute("aria-valuemin")),
+        max: Number(handle.getAttribute("aria-valuemax")),
+        now: Number(handle.getAttribute("aria-valuenow")),
+        pane: { x, right, width },
+        main: workspace
+          .querySelector('[aria-label="Conversation"]')
+          .getBoundingClientRect().width,
+      };
+    });
+    console.log(`Thread splitter ${step}: ${JSON.stringify(geometry)}`);
+    return geometry;
+  };
+
+  await expect(page.locator("html")).toHaveCSS("font-size", "16px");
+  await resize.press("ArrowLeft");
+  const normal = await measure("100% submax");
+  expect(normal.max).toBe(normal.available - 320);
+  expect(normal.now).toBeLessThan(normal.max);
+
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--buzz-text-scale", "1.5");
+  });
+  await expect(page.locator("html")).toHaveCSS("font-size", "24px");
+  const scaled = await measure("150% submax (root change only)");
+  expect.soft(scaled.available).toBe(normal.available);
+  expect.soft(scaled.now).toBe(normal.now);
+  expect.soft(scaled.max).toBe(scaled.available - 480);
+
+  await surface.evaluate((element) => {
+    element.style.removeProperty("inline-size");
+  });
+  await measure("150% unpinned submax");
+  await resize.press("End");
+  const end = await measure("150% End");
+  expect.soft(end.now).toBe(Math.round(end.pane.width));
+  expect.soft(end.max).toBe(end.now);
+  expect.soft(end.pane.right).toBeLessThanOrEqual(1440);
+  expect.soft(end.main).toBeCloseTo(480);
+
+  await resize.press("Home");
+  await measure("150% Home");
+});
+
 // Browser-only: child-only activity layout and composer resizing must preserve
 // bottom/reading intent, including intermediate rendering opportunities.
 test("thread preserves bottom and reading position through activity and composer resizing", async ({

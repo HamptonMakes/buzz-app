@@ -90,6 +90,74 @@ test("plugin split names cannot read, overwrite or reset host widths", async () 
   }
 });
 
+test.each([
+  { mainMinRem: 20, scaledMax: "650", scaledWidth: "650px" },
+  { mainMinRem: undefined, scaledMax: "810", scaledWidth: "700px" },
+])(
+  "root font size respects the opt-in reserve ($mainMinRem)",
+  async ({ mainMinRem, scaledMax, scaledWidth }) => {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1130);
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const root = document.documentElement;
+    const originalStyle = root.getAttribute("style");
+    const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect");
+    function Workspace() {
+      const split = usePanelSplit(
+        "one",
+        "scaled",
+        undefined,
+        316,
+        undefined,
+        mainMinRem,
+      );
+      return (
+        <div ref={split.ref} data-testid="scaled-workspace">
+          {split.handle}
+        </div>
+      );
+    }
+    try {
+      root.style.fontSize = "";
+      writeView("one", "panel-split:scaled", 700);
+      const view = render(<Workspace />);
+      const handle = screen.getByRole("separator");
+      const workspace = screen.getByTestId("scaled-workspace");
+      const width = () =>
+        workspace.style.getPropertyValue("--secondary-panel-width");
+      expect(handle).toHaveAttribute("aria-valuemax", "810");
+      expect(width()).toBe("700px");
+
+      await act(async () => {
+        root.style.fontSize = "1.5rem";
+      });
+      expect(getComputedStyle(root).fontSize).toBe("24px");
+      expect(handle).toHaveAttribute("aria-valuemax", scaledMax);
+      expect(width()).toBe(scaledWidth);
+
+      await act(async () => {
+        root.style.fontSize = "0px";
+      });
+      expect(handle).toHaveAttribute("aria-valuemax", "810");
+      expect(width()).toBe("700px");
+
+      view.unmount();
+      expect(disconnect).toHaveBeenCalledTimes(
+        mainMinRem === undefined ? 0 : 1,
+      );
+    } finally {
+      cleanup();
+      if (originalStyle === null) root.removeAttribute("style");
+      else root.setAttribute("style", originalStyle);
+    }
+  },
+);
+
 // Controlled container measurements exercise the hook's clamp and observer
 // lifecycle. Pointer hit targets and actual grid geometry stay in browser tests.
 test.each([undefined, { defaultWidth: 420, maxRatio: 0.5 }])(

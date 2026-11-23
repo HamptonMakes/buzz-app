@@ -49,6 +49,7 @@ import { ConversationTab as ConversationReader } from "./ConversationTab";
 import { panelOpening } from "../../features/panels/service";
 import { coveringDock, useCoveredByDock } from "./useCoveredByDock";
 import styles from "./Channels.module.css";
+import { BOARD_MAIN_MIN_REM } from "./panel-split";
 
 export type { PageTabOptions, PageTabsProps, PageTabTarget };
 
@@ -365,7 +366,14 @@ export function PageTabs({
       fallbackFocus.current
     )?.focus({ preventScroll: true });
   });
-  const split = usePanelSplit(scope, `page:${id}`);
+  const split = usePanelSplit(
+    scope,
+    `page:${id}`,
+    undefined,
+    undefined,
+    undefined,
+    BOARD_MAIN_MIN_REM,
+  );
   const hasTabs = secondary.items.length > 0;
   const showingPanel = tabState.paneOpen && hasTabs;
   const covered = useCoveredByDock(split.ref, fallbackFocus, showingPanel);

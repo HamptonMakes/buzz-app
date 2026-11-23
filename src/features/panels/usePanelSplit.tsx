@@ -14,6 +14,9 @@ import {
 import { ResizeHandle } from "./ResizeHandle";
 import styles from "./Panels.module.css";
 
+const DEFAULT_ROOT_FONT_SIZE = 16;
+type PrimarySizing = { defaultWidth: number; maxRatio: number };
+
 // The revision records which saved value an in-memory width replaced or
 // became, so a failed save survives notifications about other keys.
 function loadSplit(scope: string | undefined, key: string) {
@@ -41,7 +44,8 @@ export function usePanelSplit(
   name: string,
   defaultWidth?: number,
   min = 316,
-  primary?: { defaultWidth: number; maxRatio: number },
+  primary?: PrimarySizing,
+  mainMinRem?: number,
 ) {
   const ref = useRef<HTMLDivElement>(null);
   const key = `panel-split:${name}`;
@@ -86,6 +90,7 @@ export function usePanelSplit(
         defaultWidth={defaultWidth}
         min={min}
         primary={primary}
+        mainMinRem={mainMinRem}
       />
     ),
   };
@@ -99,26 +104,50 @@ function PanelSplitHandle({
   defaultWidth,
   min,
   primary,
+  mainMinRem,
 }: {
   target: RefObject<HTMLDivElement | null>;
   preferred: number | undefined;
   setPreferred(width: number | undefined): void;
   defaultWidth: number | undefined;
   min: number;
-  primary: { defaultWidth: number; maxRatio: number } | undefined;
+  primary: PrimarySizing | undefined;
+  mainMinRem: number | undefined;
 }) {
   const [available, setAvailable] = useState(0);
+  const [rootFontSize, setRootFontSize] = useState(DEFAULT_ROOT_FONT_SIZE);
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
-    const measure = () => setAvailable(element.clientWidth);
+    const root = element.ownerDocument.documentElement;
+    const measure = () => {
+      setAvailable(element.clientWidth);
+      if (mainMinRem === undefined) return;
+      const fontSize = getComputedStyle(root).fontSize;
+      const pixels = fontSize.endsWith("px")
+        ? Number.parseFloat(fontSize)
+        : NaN;
+      setRootFontSize(
+        Number.isFinite(pixels) && pixels > 0 ? pixels : DEFAULT_ROOT_FONT_SIZE,
+      );
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
-    return () => observer.disconnect();
-  }, [ref]);
+    const appearanceObserver =
+      mainMinRem === undefined ? undefined : new MutationObserver(measure);
+    appearanceObserver?.observe(root, {
+      attributes: true,
+      attributeFilter: ["style"],
+    });
+    return () => {
+      observer.disconnect();
+      appearanceObserver?.disconnect();
+    };
+  }, [ref, mainMinRem]);
   const minimum = Math.max(min, available * (1 - (primary?.maxRatio ?? 1)));
-  const max = Math.max(minimum, available - 320);
+  const reserve = mainMinRem === undefined ? 320 : mainMinRem * rootFontSize;
+  const max = Math.max(minimum, available - reserve);
   const clamp = (width: number) => Math.min(max, Math.max(minimum, width));
   const width = clamp(
     preferred ??
@@ -152,8 +181,12 @@ function PanelSplitHandle({
 export type PanelSplit = ReturnType<typeof usePanelSplit>;
 
 /** Plugin layouts never share persistence keys with built-in page layouts. */
-export const usePluginPanelSplit: typeof usePanelSplit = (
-  scope,
-  name,
-  ...options
-) => usePanelSplit(scope, `plugin:${name}`, ...options);
+export function usePluginPanelSplit(
+  scope: string | undefined,
+  name: string,
+  defaultWidth?: number,
+  min?: number,
+  primary?: PrimarySizing,
+) {
+  return usePanelSplit(scope, `plugin:${name}`, defaultWidth, min, primary);
+}

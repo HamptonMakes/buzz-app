@@ -137,6 +137,7 @@ import { useSidebarPreferences } from "./useSidebarPreferences";
 import { channelHasUnread } from "./useSidebarFilters";
 import { inFieldOutsideComposer } from "./conversation-rows";
 import styles from "./Channels.module.css";
+import { BOARD_MAIN_MIN_REM } from "./panel-split";
 import type { CommunityReader } from "../../features/communities/service";
 import { avatarMedia } from "../../shared/avatar-source";
 
@@ -2061,13 +2062,14 @@ function ChannelWorkspace({
         tab.id === selectedTab &&
         tab.channelId === currentId,
     );
-  // While the companion is in the dock it keeps its width and bounds from
-  // other pages; threads alone keep their own split.
+  // The companion shares its saved width with other pages; threads keep their own split.
   const split = usePanelSplit(
     scope,
     companion ? COMPANION_SPLIT.name : "channels",
     companion ? COMPANION_SPLIT.defaultWidth : undefined,
     companion ? COMPANION_SPLIT.min : undefined,
+    undefined,
+    BOARD_MAIN_MIN_REM,
   );
   const docked = !!showingPanel && !showingMediaReview;
   // A floating dock covers the conversation, even the strip beside a card:
