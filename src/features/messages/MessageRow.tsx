@@ -2465,6 +2465,9 @@ function ThreadTitleRow(props: MessageRowProps) {
                   <EditedMarker />
                 </span>
               )}
+              {session?.relayAuthor && (
+                <PinnedLineMark session={session} row={row} />
+              )}
               {summary && (
                 <span className={styles.threadTitleSummary}>{summary}</span>
               )}
@@ -2582,6 +2585,24 @@ function useThreadAgents(
       library?.identities.filter(({ pubkey }) => typers.includes(pubkey)) ?? [],
     waiting: state === "waiting",
   };
+}
+
+/** A thread title's line has no body for the pinned line, so a pin shows
+ * beside its title. */
+function PinnedLineMark({
+  session,
+  row,
+}: {
+  session: RelaySession;
+  row: ChannelMessage;
+}) {
+  const pins = usePinnedMessages(session, row.channelId);
+  if (!pins.set.has(row.id)) return null;
+  return (
+    <span className={styles.relayedSubtle} role="img" aria-label="Pinned">
+      <PinIcon size={12} aria-hidden="true" />
+    </span>
+  );
 }
 
 /** A quiet line on a message that is pinned in its channel. */
