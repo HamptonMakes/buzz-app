@@ -1654,7 +1654,8 @@ more and Show fewer: the base navigation item's type and padding with no fill, r
 focus. Use it where a fill would read as another destination.
 
 A one-time tip about a control (`EducationHint`) uses `PreviewCard tone="inverse"`:
-the Tooltip's prominent fill, with an X to dismiss on the same line.
+the Tooltip's prominent fill in small body type, with an X to dismiss on the same
+line. A text-size IconButton hugs its glyph so it sits in that line of copy.
 
 PreviewCard may expose supplemental actions through `actionRef`, such as copying
 an identity's full npub. Focus opens every preview at once, so immediate Tab

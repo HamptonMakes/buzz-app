@@ -58,7 +58,7 @@ export function EducationHint({
       aria-label="Tip"
     >
       <span className="buzz-education-hint">
-        <span className="text-body-sm">{content}</span>
+        <span>{content}</span>
         <IconButton
           ref={action}
           aria-label="Dismiss tip"
