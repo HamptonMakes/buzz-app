@@ -248,7 +248,7 @@ mentions still work.
 
 - Retry a failed reaction with **Retry reaction** on its message.
 - For an expired member invitation, add the person again from **People**.
-- If a new chat's opening message didn't send, use **Retry** on it. If an
+- If a new chat's opening message didn't send, send a new message. If an
   agent can’t be made Admin, it keeps its current role and the message
   still sends.
 

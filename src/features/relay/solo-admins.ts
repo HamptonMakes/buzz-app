@@ -154,10 +154,12 @@ export async function promoteSoloAdmins(
           },
         ])
       ).some((event) => event.id === id && event.pubkey === create.pubkey);
-    // A recorded grant remains complete even when its recipient was demoted.
-    if (await recorded()) return;
+    // Once its window closes, a grant is never sent, so whether it was
+    // recorded no longer matters and a failed lookup cannot block the chat.
     if (Date.now() / 1000 - create.created_at >= 15 * 60)
       throw new GrantSkipped("Chat admin setup expired.");
+    // A recorded grant remains complete even when its recipient was demoted.
+    if (await recorded()) return;
     const ownership = await owned?.(admin, admins);
     const checkOwnership = () => {
       if (!ownership?.())

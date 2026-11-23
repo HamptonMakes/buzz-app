@@ -29,6 +29,7 @@ function setup() {
   const profileOverrides = new Map<string, RelayEvent>();
   let omitProfiles = false;
   let failProfiles = false;
+  let failGrantReads = false;
   let journal: readonly OutgoingEvent[] = [];
   const events = new Map<string, RelayEvent>();
   const roles = new Map<string, string>();
@@ -58,6 +59,11 @@ function setup() {
     query: async (filters: readonly ReadFilter[]) => {
       if (failProfiles && filters.some((filter) => filter.kinds?.includes(0)))
         throw new Error("Profile read unavailable");
+      if (
+        failGrantReads &&
+        filters.some((filter) => filter.kinds?.includes(9000) && filter.ids)
+      )
+        throw new Error("Grant read unavailable");
       const roster = signed(relay, {
         kind: 39002,
         content: "",
@@ -170,6 +176,9 @@ function setup() {
     },
     failProfiles: () => {
       failProfiles = true;
+    },
+    failGrantReads: () => {
+      failGrantReads = true;
     },
     beforeLock: (run: () => Promise<void>) => {
       beforeLock = run;
@@ -292,43 +301,48 @@ it("resumes a partial setup from the durable outbox after restart without restor
   ).toHaveLength(1);
 });
 
-it("finishes an expired setup on its own so the chat's next message sends with current roles", async () => {
-  const h = setup();
-  const first = await h.open();
-  h.adminPublish.mockRejectedValue(new Error("offline"));
-  const { message } = h.start(first);
-  await vi.waitFor(() =>
-    expect(
-      first.session.outbox?.snapshot().find((item) => item.event.id === message)
-        ?.delivery,
-    ).toBe("failed"),
-  );
-  first.dispose();
-  const clock = vi
-    .spyOn(Date, "now")
-    .mockReturnValue(Date.now() + 16 * 60 * 1000);
-  try {
-    const resumed = await h.open();
-    const next = resumed.session.messages.send(
-      h.channel,
-      "Continue with current roles",
-      h.agents,
+it.each(["readable", "unreadable"])(
+  "finishes an expired setup on its own so the chat's next message sends with current roles when grants are %s",
+  async (grants) => {
+    const h = setup();
+    const first = await h.open();
+    h.adminPublish.mockRejectedValue(new Error("offline"));
+    const { message } = h.start(first);
+    await vi.waitFor(() =>
+      expect(
+        first.session.outbox
+          ?.snapshot()
+          .find((item) => item.event.id === message)?.delivery,
+      ).toBe("failed"),
     );
-    await vi.waitFor(() => expect(h.events.has(next)).toBe(true));
-    expect(h.adminPublish).toHaveBeenCalledOnce();
-    expect(h.agents.map((key) => h.roles.get(key))).toEqual([
-      "member",
-      "member",
-    ]);
-    expect(
-      resumed.session.outbox
-        ?.snapshot()
-        .some((item) => item.recovery?.key === soloAdminKey(h.channel)),
-    ).toBe(false);
-  } finally {
-    clock.mockRestore();
-  }
-});
+    first.dispose();
+    if (grants === "unreadable") h.failGrantReads();
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.now() + 16 * 60 * 1000);
+    try {
+      const resumed = await h.open();
+      const next = resumed.session.messages.send(
+        h.channel,
+        "Continue with current roles",
+        h.agents,
+      );
+      await vi.waitFor(() => expect(h.events.has(next)).toBe(true));
+      expect(h.adminPublish).toHaveBeenCalledOnce();
+      expect(h.agents.map((key) => h.roles.get(key))).toEqual([
+        "member",
+        "member",
+      ]);
+      expect(
+        resumed.session.outbox
+          ?.snapshot()
+          .some((item) => item.recovery?.key === soloAdminKey(h.channel)),
+      ).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
+  },
+);
 
 it.each(["transferred", "missing"] as const)(
   "skips an opening grant whose relay profile is %s and still sends the message",
