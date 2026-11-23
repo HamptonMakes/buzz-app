@@ -530,7 +530,7 @@ function longTranscript() {
   const file = "./-Users-me--buzz/kept.jsonl";
   const gap = JSON.stringify({ type: "progress", data: "x".repeat(2 ** 21) });
   const { home, type, spawn } = installed({
-    channels: [],
+    channels: [{ id: "channel", name: "channel", channelType: "stream" }],
     files: {
       [file]: [
         sessionPrompt("earlier", earlierEvent),
