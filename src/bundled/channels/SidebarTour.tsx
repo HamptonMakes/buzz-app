@@ -1,9 +1,4 @@
-import {
-  useLayoutEffect,
-  useState,
-  useSyncExternalStore,
-  type RefObject,
-} from "react";
+import { useLayoutEffect, useState, type RefObject } from "react";
 import {
   SchematicCard,
   SchematicDropLine,
@@ -13,13 +8,12 @@ import {
   SchematicScene,
 } from "../../shared/design-system/ui/Schematic";
 import { Tour, type TourPage } from "../../shared/design-system/ui/Tour";
-import { readView, subscribeView, writeView } from "../../shared/view-state";
+import { useUnseen } from "../../shared/design-system/ui/EducationHint";
+import { useSeen } from "./seen-context";
 
-// Remembered on this device, like the resize hint. A later sidebar release
-// bumps the edition so the tour shows once more for what changed.
-const seenScope = "device";
-const seenKey = "sidebar:tour-seen";
-export const sidebarTourEdition = "workspaces-1";
+// Remembered through Seen for the signed-in identity, like the grip's tip. A
+// later sidebar release uses a new key so the tour shows once more.
+export const sidebarTourKey = "buzz.channels/sidebar-tour-workspaces-1";
 
 export const sidebarTourPages: readonly TourPage[] = [
   {
@@ -136,16 +130,14 @@ export function SidebarTour({
   /** Wait for the sidebar's layout so the card does not jump as it settles. */
   ready: boolean;
 }) {
-  const seen = useSyncExternalStore(
-    (change) => subscribeView(seenScope, change),
-    () => readView<unknown>(seenScope, seenKey, null) === sidebarTourEdition,
-  );
+  const seen = useSeen();
+  const unseen = useUnseen(seen, sidebarTourKey);
   const [anchor, setAnchor] = useState<Element | null>(null);
   useLayoutEffect(() => {
-    if (!ready || seen) return;
+    if (!ready || !unseen) return;
     setAnchor(listRef.current?.closest("aside") ?? null);
-  }, [listRef, ready, seen]);
-  if (seen || !ready || !anchor) return null;
+  }, [listRef, ready, unseen]);
+  if (!unseen || !ready || !anchor) return null;
   return (
     <Tour
       open
@@ -154,7 +146,7 @@ export function SidebarTour({
       anchor={anchor}
       side="right"
       align="end"
-      onDismiss={() => writeView(seenScope, seenKey, sidebarTourEdition)}
+      onDismiss={() => seen?.mark(sidebarTourKey)}
     />
   );
 }

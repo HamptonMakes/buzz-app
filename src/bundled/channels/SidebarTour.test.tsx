@@ -4,16 +4,29 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
-import { readView, writeView } from "../../shared/view-state";
-import {
-  SidebarTour,
-  sidebarTourEdition,
-  sidebarTourPages,
-} from "./SidebarTour";
+import type { SeenStore } from "../../shared/design-system/ui/EducationHint";
+import { SeenContext } from "./seen-context";
+import { SidebarTour, sidebarTourKey, sidebarTourPages } from "./SidebarTour";
 
 const firstTitle = "Meet the new sidebar";
 
-beforeEach(() => localStorage.clear());
+let marks: Set<string>;
+const listeners = new Set<() => void>();
+const seen: SeenStore = {
+  has: (key) => marks.has(key),
+  mark: (key) => {
+    marks.add(key);
+    for (const listener of listeners) listener();
+  },
+  subscribe: (listener) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  },
+};
+
+beforeEach(() => {
+  marks = new Set();
+});
 afterEach(cleanup);
 
 function mount(ready = true) {
@@ -25,7 +38,11 @@ function mount(ready = true) {
     current: HTMLElement | null;
   };
   listRef.current = list;
-  return render(<SidebarTour listRef={listRef} ready={ready} />);
+  return render(
+    <SeenContext.Provider value={seen}>
+      <SidebarTour listRef={listRef} ready={ready} />
+    </SeenContext.Provider>,
+  );
 }
 
 test("sidebar tour waits for the layout, then shows its pages in order", async () => {
@@ -41,13 +58,11 @@ test("sidebar tour waits for the layout, then shows its pages in order", async (
   expect(screen.getByText("Reorder workspaces")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Got it" }));
   expect(screen.queryByText("Reorder workspaces")).toBeNull();
-  expect(readView("device", "sidebar:tour-seen", null)).toBe(
-    sidebarTourEdition,
-  );
+  expect(marks.has(sidebarTourKey)).toBe(true);
 });
 
 test("sidebar tour stays away once seen on this device", () => {
-  writeView("device", "sidebar:tour-seen", sidebarTourEdition);
+  marks.add(sidebarTourKey);
   mount();
   expect(screen.queryByText(firstTitle)).toBeNull();
 });
@@ -57,7 +72,5 @@ test("closing the sidebar tour also counts as seen", async () => {
   mount();
   await user.click(screen.getByRole("button", { name: "Close" }));
   expect(screen.queryByText(firstTitle)).toBeNull();
-  expect(readView("device", "sidebar:tour-seen", null)).toBe(
-    sidebarTourEdition,
-  );
+  expect(marks.has(sidebarTourKey)).toBe(true);
 });

@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import { readView, subscribeView, writeView } from "../../shared/view-state";
-import { Tooltip } from "../../shared/design-system/ui/Tooltip";
+import { EducationHint } from "../../shared/design-system/ui/EducationHint";
+import { useSeen } from "./seen-context";
 import { Button } from "../../shared/design-system/ui/Button";
 import { needsYou } from "./conversation-rows";
 import styles from "./Channels.module.css";
@@ -21,10 +22,8 @@ const sizesKey = "sidebar:card-sizes";
 const DEFAULT_SIZE = 7;
 /** The saved size of a card opened full. */
 const ALL = Number.MAX_SAFE_INTEGER;
-/** Set once someone drags or double-clicks any grip on this device. */
-const learnedScope = "device";
-const learnedKey = "sidebar:grip-learned";
-const learn = () => writeView(learnedScope, learnedKey, true);
+/** The grip's tip shows until the person dismisses it. */
+const gripTipKey = "buzz.channels/sidebar-grip-tip";
 
 function savedSizes(scope: string): Record<string, number> {
   const saved = readView<unknown>(scope, sizesKey, {});
@@ -104,11 +103,7 @@ export function SidebarCardResize({
     );
   }, []);
   const saved = useRef(size);
-  // The hint explains the grip until it has been used once.
-  const learned = useSyncExternalStore(
-    (change) => subscribeView(learnedScope, change),
-    () => readView<unknown>(learnedScope, learnedKey, false) === true,
-  );
+  const seen = useSeen();
   // Apply the saved size before paint, and again whenever rows come, go,
   // re-wrap or first get a size (a card opened after starting closed). Only
   // the grip saves a size; settling never does.
@@ -205,10 +200,9 @@ export function SidebarCardResize({
       </div>
       {/* Only a card with more than one row has anything to hide. */}
       {count > 1 && (
-        <Tooltip
-          side="bottom"
-          closeOnClick={false}
-          {...(learned && { open: false })}
+        <EducationHint
+          seen={seen}
+          seenKey={gripTipKey}
           content={
             size === ALL
               ? "Drag to resize · Double-click to reset"
@@ -230,7 +224,6 @@ export function SidebarCardResize({
             aria-keyshortcuts="Enter"
             tabIndex={0}
             onDoubleClick={() => {
-              learn();
               onToggle();
             }}
             onKeyDown={(event) => {
@@ -243,7 +236,6 @@ export function SidebarCardResize({
               const current = rows.offsetHeight;
               if (first === undefined || last === undefined) return;
               if (event.key === "Enter") {
-                learn();
                 onToggle();
               } else if (event.key === "ArrowUp")
                 onResize(
@@ -296,7 +288,6 @@ export function SidebarCardResize({
                 // A click without a drag (half of a double-click) changes nothing.
                 if (event.type !== "pointerup" || next === start)
                   return apply(rows, size);
-                learn();
                 const ends = stops(rows);
                 const target = through(ends, nearest(ends, next));
                 if (target === size) apply(rows, size);
@@ -329,7 +320,7 @@ export function SidebarCardResize({
               grip.style.pointerEvents = "auto";
             }}
           />
-        </Tooltip>
+        </EducationHint>
       )}
     </>
   );
