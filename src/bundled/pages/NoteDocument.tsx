@@ -113,8 +113,8 @@ export function NoteDocument({
     if (active) needsFocus.current = true;
   }, [active]);
   const [canEdit, setCanEdit] = useState(false);
-  const [blocking, setBlocking] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const [refreshing, setRefreshing] = useState(true);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const liveInterrupted = useLiveUpdatesInterrupted(
     workspace.session.live,
@@ -126,11 +126,13 @@ export function NoteDocument({
   const [composing, setComposing] = useState(false);
   const saveRequest = useRef<Promise<Note> | null>(null);
   const refreshAfterSave = useRef(false);
+  const refreshRequest = useRef<AbortController | null>(null);
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      refreshRequest.current?.abort();
     };
   }, []);
   const [awaitingReceipt, setAwaitingReceipt] = useState(
@@ -315,25 +317,31 @@ export function NoteDocument({
     setSaveError("");
     callbacks.current.onChange(next);
   }, []);
+  const hideDocument = useCallback(() => {
+    latest.current = { ...latest.current, unavailable: true, canEdit: false };
+    setCanEdit(false);
+    setUnavailable(true);
+    setDialog(undefined);
+    setConflict(undefined);
+    callbacks.current.onUnavailable(address);
+  }, [address, setDialog]);
   const refresh = useCallback(
-    async ({
-      signal,
-      background,
-      revoked,
-    }: {
-      signal?: AbortSignal;
-      background?: boolean;
-      revoked?: boolean;
-    } = {}) => {
+    async ({ revoked = false } = {}) => {
+      refreshRequest.current?.abort();
+      if (revoked) {
+        hideDocument();
+        setNeedsRefresh(true);
+      }
       // A local revision may echo before its save receipt. Reconcile after the
       // transaction settles so our own write cannot conflict with its draft.
       if (saveRequest.current) {
         refreshAfterSave.current = true;
         return;
       }
-      // Keep an open editor interactive during passive relay reconciliation.
-      const setPending = background ? setRefreshing : setBlocking;
-      setPending(true);
+      const request = new AbortController();
+      refreshRequest.current = request;
+      const { signal } = request;
+      setRefreshing(true);
       setError("");
       try {
         // A save started before closing the tab can still be in flight when it reopens.
@@ -341,10 +349,10 @@ export function NoteDocument({
           await initialSettlement.current.catch(() => {});
           initialSettlement.current = undefined;
         }
-        signal?.throwIfAborted();
+        signal.throwIfAborted();
         const current = await workspace.open(address, signal);
         const roles = await workspace.authority(current.channel, signal);
-        signal?.throwIfAborted();
+        signal.throwIfAborted();
         setNeedsRefresh(false);
         setUnavailable(false);
         setCanEdit(
@@ -369,32 +377,28 @@ export function NoteDocument({
         }
         callbacks.current.onChange(current);
       } catch (error) {
-        if (!signal?.aborted) {
-          setNeedsRefresh(true);
-          if (
-            !revoked &&
-            latest.current.note &&
-            !latest.current.unavailable &&
-            isTransientFailure(error)
-          )
-            return;
-          setError(errorText(error));
-          setCanEdit(false);
-          setUnavailable(true);
-          setDialog(undefined);
-          setConflict(undefined);
-          callbacks.current.onUnavailable(address);
-        }
+        if (signal.aborted) return;
+        setNeedsRefresh(true);
+        if (
+          latest.current.note &&
+          !latest.current.unavailable &&
+          isTransientFailure(error)
+        )
+          return;
+        setError(errorText(error));
+        if (!latest.current.unavailable) hideDocument();
       } finally {
-        if (!signal?.aborted) setPending(false);
+        if (!signal.aborted) {
+          refreshRequest.current = null;
+          setRefreshing(false);
+        }
       }
     },
-    [workspace, address, adopt, setDialog],
+    [workspace, address, adopt, hideDocument],
   );
   useEffect(() => {
-    const controller = new AbortController();
-    void refresh({ signal: controller.signal });
-    return () => controller.abort();
+    void refresh();
+    return () => refreshRequest.current?.abort();
   }, [refresh]);
   useEffect(() => {
     const roster = () =>
@@ -405,7 +409,7 @@ export function NoteDocument({
       if (next === prior) return;
       const known = prior !== undefined;
       prior = next;
-      if (known) void refresh({ background: true });
+      if (known) void refresh();
     });
   }, [workspace, address, refresh]);
   const deletedParent =
@@ -460,12 +464,9 @@ export function NoteDocument({
                   noteTag(event, "h") === address.channel),
             )
           )
-            void refresh({ background: true });
+            void refresh();
         },
-        () => {
-          callbacks.current.onUnavailable(address);
-          void refresh({ background: true, revoked: true });
-        },
+        () => void refresh({ revoked: true }),
       ),
     [workspace, address, refresh],
   );
@@ -475,6 +476,7 @@ export function NoteDocument({
     try {
       await action();
     } catch (error) {
+      if (latest.current.unavailable) return;
       if (error instanceof NoteConflict) setConflict(error.current);
       setError(errorText(error));
     } finally {
@@ -515,7 +517,7 @@ export function NoteDocument({
       setSaveError("");
       try {
         const next = await request;
-        if (!mounted.current) return;
+        if (!mounted.current || latest.current.unavailable) return;
         if (revision) {
           latest.current = {
             ...latest.current,
@@ -540,7 +542,7 @@ export function NoteDocument({
         setAwaitingReceipt(false);
         callbacks.current.onChange(next);
       } catch (error) {
-        if (!mounted.current) return;
+        if (!mounted.current || latest.current.unavailable) return;
         if (error instanceof NoteConflict) setConflict(error.current);
         else if (!revision && !hasEdits(base, latest.current))
           refreshAfterSave.current = true;
@@ -552,7 +554,7 @@ export function NoteDocument({
           if (revision) setBlocking(false);
           if (refreshAfterSave.current) {
             refreshAfterSave.current = false;
-            void refresh({ background: true });
+            void refresh();
           }
         }
       }
@@ -782,7 +784,7 @@ export function NoteDocument({
               aria-busy={busy}
               disabled={busy || saving}
               onClick={() => {
-                void refresh({ background: !!note && !unavailable });
+                void refresh();
                 if (retainedReadFailed)
                   setRetainedAttempt((attempt) => attempt + 1);
               }}
@@ -844,7 +846,7 @@ export function NoteDocument({
           )}
         </div>
         {error && <p role="alert">{error}</p>}
-        {saveError && (
+        {saveError && !unavailable && (
           <p role="alert">
             Auto-save is paused. Your draft is kept. {saveError}
           </p>
@@ -855,7 +857,7 @@ export function NoteDocument({
         {note?.deleted && !unavailable && (
           <p className="text-body-sm text-subtle">This doc is in Trash.</p>
         )}
-        {note && !note.deleted && (editing || !unavailable) && (
+        {note && !note.deleted && !unavailable && (
           <div
             ref={body}
             className={source && editing ? styles.sourceBody : styles.stack}
@@ -885,7 +887,7 @@ export function NoteDocument({
             </NoteEditor>
           </div>
         )}
-        {note && dialog === "share" && (
+        {note && !unavailable && dialog === "share" && (
           <NoteSharing
             note={note}
             workspace={workspace}
@@ -893,7 +895,7 @@ export function NoteDocument({
             onClose={() => setDialog(undefined)}
           />
         )}
-        {note && dialog === "history" && (
+        {note && !unavailable && dialog === "history" && (
           <NoteHistory
             note={note}
             workspace={workspace}
@@ -907,7 +909,7 @@ export function NoteDocument({
             onRestore={(revision) => void save(revision)}
           />
         )}
-        {note && dialog === "delete" && (
+        {note && !unavailable && dialog === "delete" && (
           <Dialog
             open
             onOpenChange={(open) => {
@@ -930,14 +932,15 @@ export function NoteDocument({
                   disabled={busy}
                   onClick={() => {
                     void run(async () => {
-                      adopt(
-                        await workspace.save(
-                          note,
-                          { title: note.title, markdown: "" },
-                          "delete",
-                        ),
+                      const deleted = await workspace.save(
+                        note,
+                        { title: note.title, markdown: "" },
+                        "delete",
                       );
-                      setDialog(undefined);
+                      if (!latest.current.unavailable) {
+                        adopt(deleted);
+                        setDialog(undefined);
+                      }
                     });
                   }}
                 >
@@ -947,7 +950,7 @@ export function NoteDocument({
             }
           />
         )}
-        {conflict && active && (
+        {conflict && !unavailable && active && (
           <Dialog
             open
             onOpenChange={() => {}}

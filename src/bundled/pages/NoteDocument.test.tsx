@@ -71,12 +71,14 @@ async function fixture(legacyAutoSaveDisabled = false) {
   const followers = new Set<
     Parameters<RelaySession["artifacts"]["follow"]>[1]
   >();
+  let revoke: (() => void) | undefined;
   const f = await workspaceFixture({ live: true }, (session) => ({
     ...session,
     artifacts: {
       ...session.artifacts,
       follow(ids, listener, revoked) {
         followers.add(listener);
+        revoke = () => revoked?.(ids);
         const stop = session.artifacts.follow(ids, listener, revoked);
         return () => {
           followers.delete(listener);
@@ -120,6 +122,7 @@ async function fixture(legacyAutoSaveDisabled = false) {
     title,
     change,
     onChange,
+    revoke: () => revoke?.(),
     echo(event: unknown) {
       for (const listener of followers) listener([eventDto(event)]);
     },
@@ -653,6 +656,65 @@ it("keeps formatted Buzz conversation links and Page navigation through the shar
   } finally {
     view.unmount();
   }
+});
+
+it("does not let an older head replace a newer one after a slow authority read", async () => {
+  const f = await fixture();
+  const older = await f.edit(f.viewer, f.note, {
+    title: "Older head",
+    markdown: "Original body",
+  });
+  const entered = gate();
+  const delayed = gate();
+  const authority = f.workspace.authority;
+  vi.spyOn(f.workspace, "authority").mockImplementationOnce(async (id) => {
+    entered.release();
+    await delayed.promise;
+    return authority(id);
+  });
+  try {
+    act(() => f.echo(older));
+    await act(async () => entered.promise);
+    const newer = await f.edit(f.viewer, f.note, {
+      title: "Newer head",
+      markdown: "Original body",
+    });
+    await act(async () => f.echo(newer));
+    expect(f.title).toHaveValue("Newer head");
+  } finally {
+    await act(async () => delayed.release());
+  }
+  expect(f.title).toHaveValue("Newer head");
+});
+
+it("hides a draft immediately when access is revoked mid-save and remains hidden on a transient error", async () => {
+  const f = await fixture();
+  const receipt = gate();
+  f.save.mockImplementationOnce(async (...args) => {
+    await receipt.promise;
+    return f.realSave(...args);
+  });
+  f.change("Unpublished title");
+  await advance(1500);
+  vi.spyOn(f.workspace, "open").mockRejectedValueOnce(
+    new ReadError("unavailable", "Relay unavailable", 503),
+  );
+  try {
+    act(f.revoke);
+    expect(screen.queryByRole("textbox", { name: "Title" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Doc body" })).toBeNull();
+  } finally {
+    receipt.release();
+  }
+  await saved(f.save);
+  expect(screen.queryByRole("textbox", { name: "Title" })).toBeNull();
+  expect(screen.getByRole("alert")).toHaveTextContent("Relay unavailable");
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Refresh doc" }));
+  });
+  expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue(
+    "Unpublished title",
+  );
 });
 
 it("reports access loss to the tab before its refresh finishes", async () => {
