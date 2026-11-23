@@ -656,6 +656,40 @@ it("renders the signed whole-thread total rather than only direct replies", () =
   expect(html).toContain('aria-label="View thread: 3 replies"');
   expect(html).toContain("3 replies</span>");
 });
+it("draws a thread-title root as one line that opens its thread, and in full in the thread", async () => {
+  const open = vi.fn();
+  const title = {
+    ...row,
+    content: "Fix the login test",
+    threadTitle: true as const,
+  };
+  const props = {
+    profile: { name: "Alex" },
+    media: () => undefined,
+    onOpenLink: () => false,
+    day: false,
+    retry: undefined,
+    onOpenThread: open,
+  };
+  try {
+    const { rerender } = renderDom(<MessageRow row={title} {...props} />);
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: /^Thread by Alex: Fix the login test, /,
+      }),
+    );
+    expect(open).toHaveBeenCalledWith("root", "root");
+    // The thread's own summary stays its control, with its reply count.
+    expect(
+      screen.getByRole("button", { name: "View thread: 23 replies" }),
+    ).toBeInTheDocument();
+    rerender(<MessageRow row={title} {...props} layout="thread" />);
+    expect(screen.queryByRole("button", { name: /^Thread by/ })).toBeNull();
+    expect(screen.getByText("Fix the login test")).toBeInTheDocument();
+  } finally {
+    cleanup();
+  }
+});
 it("selects this thread, adds an accessible unread cue and preserves the total reply count", () => {
   const { html, snapshot } = render({ observedCount: 2 });
   expect(snapshot).toHaveBeenCalledExactlyOnceWith({

@@ -125,6 +125,7 @@ import {
   FlagIcon,
   ListBulletsIcon,
   PinIcon,
+  ThreadIcon,
 } from "../../shared/design-system/icons";
 import { usePinnedMessages } from "./use-pins";
 import {
@@ -209,6 +210,8 @@ type MessageContentProps = MessageRowProps & {
   renderMessage?: (
     message: ReactNode,
     trigger: RefObject<HTMLButtonElement | null>,
+    /** The row's thread summary control, or null when it has none. */
+    summary: ReactNode,
   ) => ReactElement;
 };
 
@@ -1820,7 +1823,13 @@ function MessageRowContent({
   );
   return renderMessage ? (
     <>
-      {messageActions(renderMessage(message, menuTrigger))}
+      {messageActions(
+        renderMessage(
+          message,
+          menuTrigger,
+          summaryThread ? renderMessageSummary() : null,
+        ),
+      )}
       {overlays}
     </>
   ) : row.membership || row.huddle ? (
@@ -1859,6 +1868,11 @@ export const MessageRow = memo(function AudienceMessageRow(
         )
       ) : row.relayedFrom?.verified ? (
         <RelayedMessageRow {...props} />
+      ) : row.threadTitle &&
+        !row.threadRootId &&
+        (props.layout ?? "timeline") === "timeline" &&
+        props.onOpenThread ? (
+        <ThreadTitleRow {...props} />
       ) : row.audience === "agents" ? (
         <AgentsMessageRow {...props} />
       ) : (
@@ -2331,6 +2345,112 @@ function RelayedMessageRow(props: MessageRowProps) {
               </div>
             </Collapsible.Panel>
           </Collapsible.Root>
+        </div>
+      )}
+    />
+  );
+}
+
+/** A top-level message whose signer marked it as only its thread's title
+ * reads as one line in the timeline: who started it, the title, the thread's
+ * summary and the time. The line opens the thread, where the root is shown in
+ * full; the message menu keeps its usual actions. */
+function ThreadTitleRow(props: MessageRowProps) {
+  const { row, session, media, agentPubkeys, onOpenThread } = props;
+  const references = props.references ?? session;
+  const resolveName = useChannelIdentityNames(references, row.channelId);
+  const showTime = useMessageTimeVisible(references?.channels, row.channelId);
+  // The button's name carries the full date, so it follows time zone changes.
+  useLocalDay();
+  const name = resolveName(
+    row.authorId,
+    props.profile?.name ?? row.authorId.slice(0, 10),
+  );
+  const excerpt = Array.from(
+    messagePreviewText(row.content).replace(/\s+/g, " ").trim(),
+  );
+  const title =
+    excerpt.length > 280
+      ? `${excerpt.slice(0, 279).join("")}…`
+      : excerpt.join("");
+  return (
+    <FullMessageRow
+      {...props}
+      shownRow={row}
+      withoutReactions
+      alignViewer={false}
+      day={false}
+      layout="continuation"
+      stackPrevious
+      stackNext
+      renderMessage={(_message, trigger, summary) => (
+        <div
+          className={styles.relayedRow}
+          data-thread-title=""
+          data-layout="timeline"
+        >
+          {props.day && <DayDivider createdAt={row.createdAt} />}
+          <div
+            className={styles.relayedEntry}
+            data-highlight-surface=""
+            data-thread-open={props.threadOpen || undefined}
+            aria-current={props.threadOpen ? true : undefined}
+            data-message-id={row.id}
+          >
+            <div className={styles.relayedHeader}>
+              <button
+                ref={trigger}
+                type="button"
+                data-buzz-ui=""
+                className={styles.relayedTrigger}
+                aria-label={`Thread by ${name}: ${title}${row.edited ? " (edited)" : ""}, ${formatFullTimestamp(row.createdAt)}`}
+                onClick={(event) => {
+                  event.currentTarget.focus({ preventScroll: true });
+                  onOpenThread?.(row.id, row.id);
+                }}
+              />
+              <span className={styles.relayedAvatar} aria-hidden="true">
+                <AgentAvatar
+                  session={session}
+                  agentPubkey={row.authorId}
+                  channelId={row.channelId}
+                  src={avatarMedia(props.profile?.picture, media)}
+                  alt=""
+                  fallback={name}
+                  size="fill"
+                  shape={
+                    agentPubkeys?.has(row.authorId) || props.profile?.isAgent
+                      ? "squircle"
+                      : "circle"
+                  }
+                />
+              </span>
+              <span className={styles.relayedName} aria-hidden="true">
+                {name}
+              </span>
+              <ThreadIcon
+                className={styles.threadTitleIcon}
+                aria-hidden="true"
+              />
+              <span className={styles.threadTitleText} aria-hidden="true">
+                {title}
+              </span>
+              {row.edited && (
+                <span aria-hidden="true">
+                  <EditedMarker />
+                </span>
+              )}
+              {summary && (
+                <span className={styles.threadTitleSummary}>{summary}</span>
+              )}
+              <span className={styles.relayedTime} aria-hidden="true">
+                <MessageTimestamp
+                  createdAt={row.createdAt}
+                  visible={showTime}
+                />
+              </span>
+            </div>
+          </div>
         </div>
       )}
     />

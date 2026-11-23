@@ -1010,6 +1010,24 @@ html[data-keyboard-navigation] .attachmentImage:focus-visible {
   margin-top: var(--space-half);
   padding-block: var(--space-half);
 }
+/* The summary is the thread's own control, so it sits above
+   the title line's button. */
+.threadTitleSummary {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  margin-block: calc(-1 * var(--space-half));
+}
+.threadTitleSummary > [data-thread-summary] {
+  min-height: 0;
+  padding: var(--space-half) var(--space-1h) var(--space-half) var(--space-1);
+  font-size: var(--text-caption);
+  line-height: var(--text-caption--line-height);
+  letter-spacing: var(--text-caption--letter-spacing);
+  font-weight: var(--type-weight-regular);
+  user-select: none;
+}
 .messageBody [data-reply-connector] {
   margin-inline-start: calc(var(--space-4) + var(--space-3));
   max-width: calc(100% - var(--space-4) - var(--space-3));
@@ -4345,6 +4363,20 @@ html[data-keyboard-navigation]
 }
 .relayedRun > .relayedHeader > .relayedTime {
   margin-inline-start: auto;
+}
+/* A thread title's line: its title gives up room first, so who started it,
+   its summary and the time stay readable. */
+.threadTitleIcon {
+  flex: none;
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+}
+.threadTitleText {
+  flex: 1 1 0;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-standard);
 }
 /* Points right while closed and down while open, as other disclosures do. */
 .relayedCaret {

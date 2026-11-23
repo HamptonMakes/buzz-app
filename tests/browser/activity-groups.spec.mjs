@@ -3,6 +3,60 @@ import { createServer } from "./vite-server.mjs";
 import { activate } from "./navigation.mjs";
 import { clickRow, virtuaIdle } from "./timeline.mjs";
 
+test("a thread title reads as one line that opens its thread", async ({
+  page,
+}, testInfo) => {
+  const server = await createServer({
+    configFile: false,
+    envFile: false,
+    logLevel: "error",
+    server: { host: "127.0.0.1", port: 0, strictPort: false },
+  });
+  await server.listen();
+  const fixture = `http://127.0.0.1:${server.httpServer.address().port}/tests/fixtures/activity-groups.html`;
+  try {
+    await page.setViewportSize({ width: 860, height: 700 });
+    await page.goto(`${fixture}?thread-title`);
+    const history = page.getByRole("region", {
+      name: "Channel message history",
+    });
+    const line = history.getByRole("button", {
+      name: /^Thread by .*: Thread title fixture/,
+    });
+    // One line, inside the chat, with the thread's summary beside its title.
+    const fits = () =>
+      line.evaluate((button) => {
+        const header = button.parentElement.getBoundingClientRect();
+        const bounds = button
+          .closest('[aria-label="Channel message history"]')
+          .getBoundingClientRect();
+        return (
+          header.height < 40 &&
+          header.left >= bounds.left &&
+          header.right <= bounds.right
+        );
+      });
+    await expect.poll(fits).toBe(true);
+    await expect(
+      history.getByRole("button", { name: "View thread: 4 replies" }),
+    ).toBeVisible();
+    for (const colorScheme of ["light", "dark"]) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({
+        path: testInfo.outputPath(`thread-title-${colorScheme}.png`),
+      });
+    }
+    await page.setViewportSize({ width: 420, height: 700 });
+    await expect.poll(fits).toBe(true);
+    await line.press("Enter");
+    await expect(
+      page.getByText(`Opened thread ${"1".repeat(64)}`),
+    ).toBeVisible();
+  } finally {
+    await server.close();
+  }
+});
+
 test("a long relayed message fits the chat before and after opening", async ({
   page,
 }) => {
