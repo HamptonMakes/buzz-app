@@ -56,7 +56,7 @@ export function EducationHint({
       tone="inverse"
       aria-label="Tip"
     >
-      <div data-buzz-ui="" className="buzz-education-hint">
+      <div className="buzz-education-hint">
         <span>{content}</span>
         <Button
           ref={action}
