@@ -3955,6 +3955,8 @@ export class AgentsService extends Service implements Agents {
     signal: AbortSignal,
   ): Promise<RoutedPick> {
     const models = this.ownModels.get(type.key) ?? type.models;
+    // Hosted, or on another execution target, it runs on that one's models.
+    if (agent.place === "hosted" || agent.executionBinding) return pick;
     if (!routesFor(type.id).routes.length || !models) return pick;
     let offered: Models;
     try {

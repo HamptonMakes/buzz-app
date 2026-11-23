@@ -522,7 +522,7 @@ export function createTabs({
     return (
       <CreateModelChoices
         {...props}
-        harness="claude-code"
+        harness={execution?.remote ? undefined : "claude-code"}
         models={modelChoices(state.models)}
         value={current.model}
         defaultModel={
@@ -1436,7 +1436,10 @@ export function createTabs({
       onRecommended(draft) && candidatesFor("claude-code").length > 0;
     // The route Automatic runs on, while a plugin offers one.
     useModelRoutes("claude-code");
-    const automaticRoute = activeRoute("claude-code", "", true);
+    // A remote target runs on its own models: no routes there.
+    const automaticRoute = remote
+      ? undefined
+      : activeRoute("claude-code", "", true);
     const found = useRecommended(following);
     // A remote target runs Recommended on its own default.
     const resolved = remote ? null : found;
@@ -1521,7 +1524,7 @@ export function createTabs({
     const modelControl = (
       <>
         <ModelPicker
-          harness="claude-code"
+          harness={remote ? undefined : "claude-code"}
           allowCustomModel
           models={modelChoices(setupState.models)}
           value={draft.model}

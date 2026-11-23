@@ -956,7 +956,7 @@ export function createTabs(
       <div ref={field} className="contents">
         <CreateModelChoices
           {...props}
-          harness="codex"
+          harness={bound ? undefined : "codex"}
           models={choices(data)}
           value={current.model}
           defaultModel={catalogModel(providerDefaults.model, data)?.model ?? ""}
@@ -1611,7 +1611,8 @@ export function createTabs(
     const following = onRecommended(draft) && candidatesFor("codex").length > 0;
     // The route Automatic runs on, while a plugin offers one.
     useModelRoutes("codex");
-    const automaticRoute = activeRoute("codex", "", true);
+    // A remote target runs on its own models: no routes there.
+    const automaticRoute = bound ? undefined : activeRoute("codex", "", true);
     // A remote target runs Recommended on its own default.
     const resolved = bound ? null : provider.recommended();
     const effective = provider.resolve({ ...draft, effort: "" }, !!bound);
@@ -1698,7 +1699,7 @@ export function createTabs(
           </div>
         )}
         <ModelPicker
-          harness="codex"
+          harness={bound ? undefined : "codex"}
           allowCustomModel={!!bound}
           models={choices(data)}
           value={draft.model}
