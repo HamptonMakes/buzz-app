@@ -56,7 +56,7 @@ export function EducationHint({
       tone="inverse"
       aria-label="Tip"
     >
-      <span>
+      <span className="text-label-sm">
         {content}{" "}
         <Button
           ref={action}
