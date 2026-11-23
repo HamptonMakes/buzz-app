@@ -1868,10 +1868,7 @@ export const MessageRow = memo(function AudienceMessageRow(
         )
       ) : row.relayedFrom?.verified ? (
         <RelayedMessageRow {...props} />
-      ) : row.threadTitle &&
-        !row.threadRootId &&
-        (props.layout ?? "timeline") === "timeline" &&
-        props.onOpenThread ? (
+      ) : titleLine(props) ? (
         <ThreadTitleRow {...props} />
       ) : row.audience === "agents" ? (
         <AgentsMessageRow {...props} />
@@ -2350,6 +2347,34 @@ function RelayedMessageRow(props: MessageRowProps) {
     />
   );
 }
+
+/** A thread title is one line only in the timeline, where it can open its
+ * thread, and only while the title is all there is to show: a failed send
+ * keeps its Retry, and attachments, forwards and agent or workflow rows keep
+ * their own presentation. */
+const titleLine = ({
+  row,
+  layout = "timeline",
+  onOpenThread,
+  startsThreads = true,
+}: MessageRowProps) =>
+  !!row.threadTitle &&
+  !row.threadRootId &&
+  layout === "timeline" &&
+  !!onOpenThread &&
+  (startsThreads || row.replyCount > 0) &&
+  row.delivery !== "failed" &&
+  row.delivery !== "unknown" &&
+  !!row.content.trim() &&
+  !row.attachments.length &&
+  !row.forward &&
+  !row.diff &&
+  !row.agentEnvelope &&
+  !row.pluginRequest &&
+  !row.audience &&
+  !row.workflowOwnerId &&
+  !row.membership &&
+  !row.huddle;
 
 /** A top-level message whose signer marked it as only its thread's title
  * reads as one line in the timeline: who started it, the title, the thread's

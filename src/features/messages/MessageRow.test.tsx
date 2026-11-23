@@ -686,6 +686,9 @@ it("draws a thread-title root as one line that opens its thread, and in full in 
     rerender(<MessageRow row={title} {...props} layout="thread" />);
     expect(screen.queryByRole("button", { name: /^Thread by/ })).toBeNull();
     expect(screen.getByText("Fix the login test")).toBeInTheDocument();
+    // A failed send keeps its full row, so its Retry stays in the timeline.
+    rerender(<MessageRow row={{ ...title, delivery: "failed" }} {...props} />);
+    expect(screen.queryByRole("button", { name: /^Thread by/ })).toBeNull();
   } finally {
     cleanup();
   }
