@@ -235,6 +235,14 @@ function fillComposer(field: ComposerInputElement, text: string) {
   fireEvent(document, new Event("selectionchange"));
 }
 
+/** Saves a typed draft, as a pause in typing does, with focus in the editor. */
+function saveInFocus(field: HTMLElement) {
+  act(() => {
+    field.blur();
+    field.focus();
+  });
+}
+
 function mount(
   options: Partial<MessageComposerProps> = {},
   control?: LocalAgents,
@@ -1932,9 +1940,21 @@ function attachByPaste(target: HTMLElement, file = attachmentFile()) {
   });
 }
 function attachByDrop(target: HTMLElement, file = attachmentFile()) {
+  dropFiles(target, [file]);
+}
+/** `folders` are the dropped files whose entries are directories. */
+function dropFiles(
+  target: HTMLElement,
+  files: readonly File[],
+  folders: readonly File[] = [],
+) {
   const transfer = {
     types: ["Files"],
-    files: [file],
+    files,
+    items: files.map((file) => ({
+      kind: "file",
+      webkitGetAsEntry: () => ({ isDirectory: folders.includes(file) }),
+    })),
     dropEffect: "uninitialized",
   };
   const over = new Event("dragover", { bubbles: true, cancelable: true });
@@ -2260,6 +2280,326 @@ it("counts every picked file when none of several can be attached", async () => 
   expect(notice).toHaveAccessibleDescription("a.png, b.png are empty.");
   expect(h.uploadCalls).toHaveLength(0);
 });
+
+it.each([
+  {
+    folders: ["top-recipes"],
+    empty: [],
+    title: "Could not attach folder",
+    description: "top-recipes is a folder. Folders can’t be attached.",
+  },
+  {
+    folders: ["photos", "drafts"],
+    empty: [],
+    title: "Could not attach 2 folders",
+    description: "photos, drafts are folders. Folders can’t be attached.",
+  },
+  {
+    folders: ["top-recipes"],
+    empty: ["empty.txt"],
+    title: "Could not attach 2 items",
+    description:
+      "top-recipes is a folder. Folders can’t be attached. empty.txt is empty.",
+  },
+  // An empty file is still an empty file, however it arrives.
+  {
+    folders: [],
+    empty: ["empty.txt"],
+    title: "Could not attach file",
+    description: "empty.txt is empty.",
+  },
+])(
+  "reports dropped folders $folders and empty files $empty as $title",
+  async ({ folders, empty, title, description }) => {
+    const h = await mountUploadComposer();
+    const dropped = folders.map((name) => attachmentFile(name, ""));
+    dropFiles(
+      h.form(),
+      [...dropped, ...empty.map((name) => attachmentFile(name, ""))],
+      dropped,
+    );
+    const notice = await screen.findByRole("dialog", { name: title });
+    expect(notice).toHaveAccessibleDescription(description);
+    expect(h.uploadCalls).toHaveLength(0);
+  },
+);
+
+it("attaches the files dropped beside a folder and names the folder in one notice", async () => {
+  const h = await mountUploadComposer();
+  const folder = attachmentFile("top-recipes", "");
+  dropFiles(
+    h.form(),
+    [attachmentFile("one.txt"), folder, attachmentFile("two.txt")],
+    [folder],
+  );
+  const notice = await screen.findByRole("dialog", {
+    name: "Could not attach 1 of 3 items",
+  });
+  expect(notice).toHaveAccessibleDescription(
+    "top-recipes is a folder. Folders can’t be attached.",
+  );
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  // The chips fade in.
+  for (const name of ["one.txt", "two.txt"])
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: `Remove ${name}` }),
+      ).toBeVisible(),
+    );
+  expect(
+    screen.queryByRole("button", { name: "Remove top-recipes" }),
+  ).toBeNull();
+  await waitFor(() => expect(h.uploadCalls).toHaveLength(1));
+});
+
+const executable = (name: string) =>
+  new File(["MZ"], name, { type: "application/x-msdownload" });
+const chipErrors = () =>
+  screen.getAllByRole("alert").map((node) => node.textContent);
+
+it.each(["drop", "picker", "paste"])(
+  "admits a file of any type by %s and, when the relay refuses its type, says so in a notice and on its chip",
+  async (intake) => {
+    // No file type is refused on the way in; only the relay knows what it takes.
+    const h = await mountUploadComposer();
+    const file = executable("setup.exe");
+    if (intake === "drop") dropFiles(h.form(), [file]);
+    else if (intake === "picker") pickAttachments(h.container, [file]);
+    else attachByPaste(h.input(), file);
+    await waitFor(() => expect(h.uploadCalls).toHaveLength(1));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await act(async () => {
+      h.uploadCalls[0]?.result.reject(new UploadError("type"));
+    });
+    expect(
+      await screen.findByRole("dialog", { name: "Could not attach file" }),
+    ).toHaveAccessibleDescription("setup.exe isn’t a supported file type.");
+    expect(chipErrors()).toEqual([
+      `setup.exe: ${UPLOAD_FAILURES.type} Remove it to send.`,
+    ]);
+    // The same bytes would be refused again, so the chip offers only Remove.
+    expect(
+      screen.queryByRole("button", { name: "Retry setup.exe" }),
+    ).toBeNull();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Remove setup.exe" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  },
+);
+
+it("names every file of a drop the relay refuses for its type in one notice, apart from the drop's folder notice", async () => {
+  const h = await mountUploadComposer();
+  const folder = attachmentFile("top-recipes", "");
+  dropFiles(
+    h.form(),
+    [folder, executable("a.exe"), executable("b.exe"), attachmentFile()],
+    [folder],
+  );
+  const folderNotice = await screen.findByRole("dialog", {
+    name: "Could not attach 1 of 4 items",
+  });
+  // Files upload one at a time, so the refusals arrive one at a time.
+  await waitFor(() => expect(h.uploadCalls).toHaveLength(1));
+  await act(async () => {
+    h.uploadCalls[0]?.result.reject(new UploadError("type"));
+  });
+  expect(
+    await screen.findByRole("dialog", { name: "Could not attach file" }),
+  ).toHaveAccessibleDescription("a.exe isn’t a supported file type.");
+  await waitFor(() => expect(h.uploadCalls).toHaveLength(2));
+  await act(async () => {
+    h.uploadCalls[1]?.result.reject(new UploadError("type"));
+  });
+  const notice = await screen.findByRole("dialog", {
+    name: "Could not attach 2 files",
+  });
+  expect(notice).toHaveAccessibleDescription(
+    "a.exe, b.exe aren’t supported file types.",
+  );
+  expect(screen.getAllByRole("dialog")).toHaveLength(2);
+  expect(folderNotice).toHaveAccessibleDescription(
+    "top-recipes is a folder. Folders can’t be attached.",
+  );
+  // The file the relay takes still attaches.
+  await waitFor(() => expect(h.uploadCalls).toHaveLength(3));
+  await act(async () => h.uploadCalls[2]?.result.resolve(uploadDescriptor()));
+  expect(chipErrors()).toEqual([
+    `a.exe: ${UPLOAD_FAILURES.type} Remove it to send.`,
+    `b.exe: ${UPLOAD_FAILURES.type} Remove it to send.`,
+  ]);
+  // Dismissing the notice leaves the chips, and does not bring it back.
+  // A click event: jsdom has no pointer capture for the stack's swipe handler.
+  fireEvent.click(
+    within(notice).getByRole("button", { name: "Dismiss notification" }),
+  );
+  await waitFor(() =>
+    expect(screen.getAllByRole("dialog")).toEqual([folderNotice]),
+  );
+  expect(chipErrors()).toHaveLength(2);
+});
+
+it.each([
+  new UploadError("rejected"),
+  new UploadError("codec"),
+  new UploadError("size"),
+  new UploadError("denied"),
+  new UploadError("failed"),
+  new TypeError("Failed to fetch"),
+])(
+  "keeps an upload that fails for another reason on its chip with Retry, without the type notice: $message",
+  async (failure) => {
+    const h = await mountUploadComposer();
+    dropFiles(h.form(), [executable("setup.exe")]);
+    await waitFor(() => expect(h.uploadCalls).toHaveLength(1));
+    await act(async () => {
+      h.uploadCalls[0]?.result.reject(failure);
+    });
+    // The chip's error and the notice come from the same draft update.
+    await waitFor(() =>
+      expect(chipErrors()).toEqual([`setup.exe: ${failure.message}`]),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Retry setup.exe" }),
+    ).toBeVisible();
+  },
+);
+
+it("names only the newly refused file once the type notice was dismissed", async () => {
+  const h = await mountUploadComposer();
+  dropFiles(h.form(), [executable("a.exe"), executable("b.exe")]);
+  await waitFor(() => expect(h.uploadCalls).toHaveLength(1));
+  await act(async () => {
+    h.uploadCalls[0]?.result.reject(new UploadError("type"));
+  });
+  // A click event: jsdom has no pointer capture for the stack's swipe handler.
+  fireEvent.click(
+    within(
+      await screen.findByRole("dialog", { name: "Could not attach file" }),
+    ).getByRole("button", { name: "Dismiss notification" }),
+  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(h.uploadCalls).toHaveLength(2));
+  await act(async () => {
+    h.uploadCalls[1]?.result.reject(new UploadError("type"));
+  });
+  expect(
+    await screen.findByRole("dialog", { name: "Could not attach file" }),
+  ).toHaveAccessibleDescription("b.exe isn’t a supported file type.");
+  expect(chipErrors()).toHaveLength(2);
+});
+
+it.each([
+  ["another tab is selected", true, false],
+  ["its conversation is not presented", false, true],
+])(
+  "holds the type notice of a composer that stays mounted while %s, until it is shown",
+  async (_, presented, shown) => {
+    const h = await mountUploadComposer();
+    dropFiles(h.form(), [executable("setup.exe")]);
+    await waitFor(() => expect(h.uploadCalls).toHaveLength(1));
+    // The upload continues there, and the shared notice stack would show its
+    // refusal over whichever conversation is on screen.
+    h.present(presented, shown);
+    await act(async () => {
+      h.uploadCalls[0]?.result.reject(new UploadError("type"));
+    });
+    await waitFor(() =>
+      expect(chipErrors()).toEqual([
+        `setup.exe: ${UPLOAD_FAILURES.type} Remove it to send.`,
+      ]),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    h.present(true);
+    expect(
+      await screen.findByRole("dialog", { name: "Could not attach file" }),
+    ).toHaveAccessibleDescription("setup.exe isn’t a supported file type.");
+    // Covered again before it is dismissed, it returns once more.
+    h.present(presented, shown);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    h.present(true);
+    expect(
+      await screen.findByRole("dialog", { name: "Could not attach file" }),
+    ).toBeVisible();
+  },
+);
+
+it("does not raise the type notice again for a draft that returns with a refused file", async () => {
+  const h = await mountUploadComposer();
+  dropFiles(h.form(), [executable("setup.exe")]);
+  await waitFor(() => expect(h.uploadCalls).toHaveLength(1));
+  await act(async () => {
+    h.uploadCalls[0]?.result.reject(new UploadError("type"));
+  });
+  await screen.findByRole("dialog", { name: "Could not attach file" });
+  h.unmount();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  render(
+    <MessageComposer
+      session={h.owner.session}
+      scope={h.scope}
+      channelId="channel"
+      channelName="General"
+    />,
+    { reactStrictMode: true, wrapper: ToastProvider },
+  );
+  // The chip still says why the draft cannot send.
+  await waitFor(() =>
+    expect(chipErrors()).toEqual([
+      `setup.exe: ${UPLOAD_FAILURES.type} Remove it to send.`,
+    ]),
+  );
+  // A notice would be mounted by the render that shows the chip.
+  await act(async () => {});
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Retry setup.exe" })).toBeNull();
+});
+
+it.each(["mounted", "returned to after the failure"])(
+  "leaves a type refused during a background send to that send's notice (composer %s)",
+  async (composer) => {
+    const h = await mountUploadComposer();
+    attachByPaste(h.input(), executable("setup.exe"));
+    await waitFor(() => expect(h.send()).toBeEnabled());
+    fireEvent.click(h.send());
+    await waitFor(() => expect(h.uploadCalls).toHaveLength(1));
+    const away = composer !== "mounted";
+    if (away) h.unmount();
+    await act(async () => {
+      h.uploadCalls[0]?.result.reject(new UploadError("type"));
+    });
+    if (away)
+      render(
+        <MessageComposer
+          session={h.owner.session}
+          scope={h.scope}
+          channelId="channel"
+          channelName="General"
+        />,
+        { reactStrictMode: true, wrapper: ToastProvider },
+      );
+    // The restored file's chip says why, without Retry.
+    await waitFor(() =>
+      expect(chipErrors()).toEqual([
+        `setup.exe: ${UPLOAD_FAILURES.type} Remove it to send.`,
+      ]),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Retry setup.exe" }),
+    ).toBeNull();
+    // One notice for the one failure: the send's, which names the conversation.
+    const notice = await screen.findByRole("dialog", {
+      name: "Upload to #General failed",
+    });
+    // It is the only notice, so it names the file as the composer's would.
+    expect(notice).toHaveAccessibleDescription(
+      "setup.exe isn’t a supported file type.",
+    );
+    await act(async () => {});
+    expect(screen.getAllByRole("dialog")).toEqual([notice]);
+  },
+);
 
 it("does not focus after a picker upload fails or is later retried", async () => {
   const h = await mountUploadComposer();
@@ -5470,7 +5810,12 @@ it.each(["different", "same"])(
     );
     const { mountChat } = soloModelPreferenceHarness(agents);
     const one = mountChat();
-    const two = mountChat();
+    // Composers on one draft address the same agents, so a reset from either
+    // covers both. Different agents need the second composer's own draft.
+    const two =
+      target === "same"
+        ? mountChat()
+        : mountChat("channel", { threadRootId: "root" });
     const choose = async (
       h: ReturnType<typeof mount>,
       recipient: string,
@@ -8570,7 +8915,7 @@ it.each([false, true])(
         { id: "channel", channelType: "stream", members: ["d".repeat(64)] },
       ],
     };
-    const operations = expired
+    const operations: unknown[] = expired
       ? [
           {
             delivery: "failed",
@@ -8608,6 +8953,9 @@ it.each([false, true])(
           consume?.();
         },
         acknowledge: async () => {},
+        dismiss: async () => {
+          operations.length = 0;
+        },
       },
     });
     Object.assign(h.session, {
@@ -8628,14 +8976,14 @@ it.each([false, true])(
     await act(async () => {});
     fireEvent.click(screen.getByRole("button", { name: "Invite" }));
     await act(async () => {});
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      expired ? "addition expired" : "Cannot add agent",
-    );
+    // An expired failed addition is replaced, so both reach the new send.
+    expect(screen.getByRole("alert")).toHaveTextContent("Cannot add agent");
     expect(
       (screen.getByRole("textbox", { hidden: true }) as HTMLInputElement).value,
     ).toBe("@Honey ");
     expect(h.messages.send).not.toHaveBeenCalled();
-    if (expired) expect(add).not.toHaveBeenCalled();
+    expect(add).toHaveBeenCalledOnce();
+    expect(operations).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await act(async () => {});
     expect(h.input()).not.toHaveAttribute("aria-disabled", "true");
@@ -12722,7 +13070,7 @@ it.each([
     );
   const h = mount();
   h.fill("Local work");
-  act(() => h.input().blur());
+  saveInFocus(h.input());
   const local = localStorage.getItem(key);
   if (local === null) throw new Error("Expected a saved draft");
   const peer = JSON.stringify("Saved elsewhere");
@@ -12770,7 +13118,7 @@ it.each([false, true])(
         return getItem.call(this, key);
       });
     try {
-      act(() => h.input().blur());
+      saveInFocus(h.input());
     } finally {
       read.mockRestore();
     }
@@ -12828,7 +13176,7 @@ it("can recover text entered again after an earlier deletion", () => {
   expect(h.input()).toHaveValue("");
 
   h.fill("Local work");
-  act(() => h.input().blur());
+  saveInFocus(h.input());
   act(() => writeView("scope", "draft:channel", "Saved elsewhere"));
   h.remount();
   expect(h.input()).toHaveValue("Local work");
@@ -13005,6 +13353,8 @@ it("empties for a draft cleared elsewhere, and a stale composer never restores i
   act(() => clearDraft({ scope: "scope" }, "draft:channel"));
   expect(h.input()).toHaveValue("");
 
+  // Typed and saved here, and the user has left the editor: nothing local is
+  // left to protect.
   h.fill("Edited here");
   act(() => h.input().blur());
   act(() => clearDraft({ scope: "scope" }, "draft:channel"));
@@ -13013,6 +13363,7 @@ it("empties for a draft cleared elsewhere, and a stale composer never restores i
   expect(h.input()).toHaveValue("");
   expect(screen.queryByText(/This draft changed elsewhere/)).toBeNull();
 
+  // An edit that has not reached storage is kept behind the conflict.
   h.fill("Saved revision");
   act(() => h.input().blur());
   h.fill("Edited here, still typing");
@@ -13021,7 +13372,330 @@ it("empties for a draft cleared elsewhere, and a stale composer never restores i
   expect(h.input()).toHaveValue("Edited here, still typing");
   expect(screen.getByRole("alert")).toHaveTextContent(/changed elsewhere/);
   expect(viewRevision("scope", "draft:channel")).toBeNull();
+  // Only the user's choice puts the kept text back over the clear.
+  fireEvent.click(screen.getByRole("button", { name: "Keep my draft" }));
+  expect(readView("scope", "draft:channel", null)).toMatchObject({
+    text: "Edited here, still typing",
+  });
+  expect(h.input()).toHaveValue("Edited here, still typing");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
+
+it("holds a conflict raised around a failed send until the user resolves it", async () => {
+  const h = mount();
+  h.fill("Unsent body");
+  // Another composer changes the draft while this send is in flight, and the
+  // send then fails: the typed text was saved, so only the conflict keeps it.
+  h.messages.send.mockImplementationOnce(() => {
+    writeView("scope", "draft:channel", "Changed elsewhere");
+    throw Error("outbox full");
+  });
+  await h.user.click(screen.getByRole("button", { name: "Send message" }));
+  expect(h.messages.send).toHaveBeenCalledOnce();
+  expect(screen.getByText(/changed elsewhere/)).toBeVisible();
+  expect(h.input()).toHaveValue("Unsent body");
+  expect(h.input()).not.toHaveFocus();
+  // Later notifications for the scope, an unrelated key and the late storage
+  // event for this one, leave the choice with the user.
+  act(() => writeView("scope", "draft:other", "Unrelated"));
+  act(() => {
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        storageArea: localStorage,
+        key: 'buzz-view.v1:["scope","draft:channel"]',
+      }),
+    );
+  });
+  expect(screen.getByText(/changed elsewhere/)).toBeVisible();
+  expect(h.input()).toHaveValue("Unsent body");
+  expect(readView("scope", "draft:channel", "")).toBe("Changed elsewhere");
+  await h.user.click(screen.getByRole("button", { name: "Keep my draft" }));
+  expect(h.input()).toHaveValue("Unsent body");
+  expect(readView("scope", "draft:channel", "")).toMatchObject({
+    text: "Unsent body",
+  });
+  expect(screen.queryByText(/changed elsewhere/)).not.toBeInTheDocument();
+});
+
+it("keeps the draft when a failed Solo send's storage event arrives after the failure", async () => {
+  const h = mount();
+  const channel = {
+    id: "channel",
+    channelType: "solo",
+    members: [first.pubkey],
+  };
+  const list = { status: "ready", channels: [channel] };
+  const library = { status: "ready", identities: [first] };
+  let fail = () => {};
+  const refreshMembership = vi.fn(
+    () =>
+      new Promise<typeof channel>((_resolve, reject) => {
+        fail = () => reject(new Error("Membership not confirmed"));
+      }),
+  );
+  h.retarget({
+    soloConversation: true,
+    session: {
+      ...h.session,
+      channels: { list: () => list, subscribeList: () => () => {} },
+      agentLibrary: {
+        snapshot: () => library,
+        subscribe: () => () => {},
+      },
+      channelWrites: { refreshMembership, addAgents: vi.fn() },
+    } as unknown as RelaySession,
+  });
+  h.fill("Unsent body");
+  await h.user.click(screen.getByRole("button", { name: "First Honey" }));
+  const body = h.input().value;
+  expect(body).toContain("Unsent body");
+  h.submit();
+  await waitFor(() => expect(refreshMembership).toHaveBeenCalledOnce());
+  // The user switches windows and edits the shared draft there. This window
+  // has not handled the storage event when the membership refresh rejects.
+  act(() => (document.activeElement as HTMLElement).blur());
+  expect(document.body).toHaveFocus();
+  const key = 'buzz-view.v1:["scope","draft:channel"]';
+  localStorage.setItem(key, JSON.stringify("Edited in another window"));
+  await act(async () => fail());
+  expect(await screen.findByText("Membership not confirmed")).toBeVisible();
+  expect(h.messages.send).not.toHaveBeenCalled();
+  act(() => {
+    window.dispatchEvent(
+      new StorageEvent("storage", { storageArea: localStorage, key }),
+    );
+  });
+  expect(h.input()).toHaveValue(body);
+  expect(screen.getByText(/changed elsewhere/)).toBeVisible();
+  expect(readView("scope", "draft:channel", "")).toBe(
+    "Edited in another window",
+  );
+  await h.user.click(screen.getByRole("button", { name: "Keep my draft" }));
+  expect(h.input()).toHaveValue(body);
+  expect(readView("scope", "draft:channel", "")).toMatchObject({
+    text: expect.stringContaining("Unsent body"),
+  });
+  expect(screen.queryByText(/changed elsewhere/)).not.toBeInTheDocument();
+});
+
+it("keeps an open link dialog and the draft under it when the draft changes in another window", () => {
+  const h = mount();
+  h.fill("docs");
+  const editor = h.input();
+  act(() => editor.setSelectionRange(0, 4));
+  fireEvent.click(screen.getByRole("button", { name: "Toggle formatting" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Link/ }));
+  const url = screen.getByRole("textbox", { name: "URL" });
+  fireEvent.change(url, { target: { value: "http://example.com/docs" } });
+  act(() => url.focus());
+  expect(url).toHaveFocus();
+  const key = 'buzz-view.v1:["scope","draft:channel"]';
+  act(() => {
+    localStorage.setItem(key, JSON.stringify("Saved in another window"));
+    window.dispatchEvent(
+      new StorageEvent("storage", { storageArea: localStorage, key }),
+    );
+  });
+  expect(screen.getByRole("dialog", { name: "Add link" })).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "URL" })).toHaveValue(
+    "http://example.com/docs",
+  );
+  expect(editor).toHaveValue("docs");
+  // The link edit finishes on the draft it was opened for; the choice between
+  // the two drafts is then the user's.
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(h.input().innerHTML).toContain("http://example.com/docs");
+  expect(screen.getByRole("alert")).toHaveTextContent(/changed elsewhere/);
+  expect(readView("scope", "draft:channel", "")).toBe(
+    "Saved in another window",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Keep my draft" }));
+  expect(JSON.stringify(readView("scope", "draft:channel", null))).toContain(
+    "http://example.com/docs",
+  );
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it.each([
+  ["follows", "the editor is not focused", "blurred"],
+  ["follows", "its window is not focused", "background"],
+  [
+    "keeps its text behind the conflict for",
+    "the editor is focused",
+    "focused",
+  ],
+  [
+    "keeps its text behind the conflict for",
+    "one of its controls is focused",
+    "control",
+  ],
+] as const)(
+  "%s a draft saved in another window when %s",
+  (_outcome, _when, focus) => {
+    const h = mount();
+    h.fill("first half");
+    if (focus === "blurred") act(() => h.input().blur());
+    else if (focus === "control") {
+      // Leaving the editor for one of its controls saves the draft.
+      const send = screen.getByRole("button", { name: "Send message" });
+      act(() => send.focus());
+      expect(send).toHaveFocus();
+    } else {
+      saveInFocus(h.input());
+      expect(h.input()).toHaveFocus();
+    }
+    // Another window keeps its editor as the active element while the user
+    // works elsewhere; only the window's own focus tells the two apart.
+    const windowFocus = vi
+      .spyOn(document, "hasFocus")
+      .mockReturnValue(focus !== "background");
+    try {
+      const key = 'buzz-view.v1:["scope","draft:channel"]';
+      act(() => {
+        localStorage.setItem(key, JSON.stringify("Finished elsewhere"));
+        window.dispatchEvent(
+          new StorageEvent("storage", { storageArea: localStorage, key }),
+        );
+      });
+      if (focus === "blurred" || focus === "background") {
+        expect(h.input()).toHaveValue("Finished elsewhere");
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        return;
+      }
+      expect(screen.getByRole("alert")).toHaveTextContent(/changed elsewhere/);
+      expect(h.input()).toHaveValue("first half");
+      // Typing on does not overwrite the other window's draft.
+      h.fill("first half, still here");
+      expect(readView("scope", "draft:channel", "")).toBe("Finished elsewhere");
+      fireEvent.click(screen.getByRole("button", { name: "Keep my draft" }));
+      expect(readView("scope", "draft:channel", "")).toMatchObject({
+        text: "first half, still here",
+      });
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally {
+      windowFocus.mockRestore();
+    }
+  },
+);
+
+it("follows a draft changed elsewhere in a focused editor that was never typed in", () => {
+  writeView("scope", "draft:channel", "Saved draft");
+  const h = mount();
+  act(() => h.input().focus());
+  expect(h.input()).toHaveFocus();
+  act(() => writeView("scope", "draft:channel", "Saved elsewhere"));
+  expect(h.input()).toHaveValue("Saved elsewhere");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it("follows a draft changed elsewhere in a focused editor the user emptied", () => {
+  const h = mount();
+  h.fill("Typed here");
+  h.fill("");
+  saveInFocus(h.input());
+  expect(h.input()).toHaveFocus();
+  act(() => writeView("scope", "draft:channel", "Saved elsewhere"));
+  expect(h.input()).toHaveValue("Saved elsewhere");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it("keeps a staged forward in a focused composer with no typed text when the draft changes elsewhere", () => {
+  writeView("scope", "draft:channel", {
+    text: "",
+    recipients: [],
+    forward: {
+      version: 1,
+      origin: "https://another.example",
+      channelId: "private",
+      id: "c".repeat(64),
+    },
+  });
+  const h = mount();
+  const forward = () =>
+    screen.queryByRole("button", { name: "Remove forwarded message" });
+  expect(forward()).toBeInTheDocument();
+  // Typed in and emptied again: only the forward is left.
+  h.fill("note");
+  h.fill("");
+  saveInFocus(h.input());
+  expect(h.input()).toHaveFocus();
+  expect(readView("scope", "draft:channel", null)).toMatchObject({
+    text: "",
+    forward: { id: "c".repeat(64) },
+  });
+  act(() => writeView("scope", "draft:channel", "Saved elsewhere"));
+  expect(forward()).toBeInTheDocument();
+  expect(h.input()).toHaveValue("");
+  expect(screen.getByText(/changed elsewhere/)).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Keep my draft" }));
+  expect(readView("scope", "draft:channel", null)).toMatchObject({
+    text: "",
+    forward: { id: "c".repeat(64) },
+  });
+  expect(forward()).toBeInTheDocument();
+});
+
+it("follows a draft changed elsewhere in the focused follow-up a send left with remembered agents", async () => {
+  const h = mount();
+  h.setProfiles(new Map([[first.pubkey, { name: "Honey", isAgent: true }]]));
+  h.fill("First message");
+  await h.user.click(screen.getByRole("button", { name: "First Honey" }));
+  await h.user.click(screen.getByRole("button", { name: "Send message" }));
+  expect(h.messages.send).toHaveBeenCalledOnce();
+  // The follow-up holds the remembered agent, which the user did not type.
+  expect(h.input()).toHaveValue("@Honey ");
+  expect(h.input()).toHaveFocus();
+  act(() => writeView("scope", "draft:channel", "Saved elsewhere"));
+  expect(h.input()).toHaveValue("Saved elsewhere");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it.each(["edit", "send", "clear", "clearDraft"] as const)(
+  "follows a %s from another composer on the same draft without a conflict",
+  async (change) => {
+    const a = mount();
+    const b = mount({ session: a.session });
+    const save = (h: typeof a) => act(() => h.input().blur());
+    a.fill("first half");
+    save(a);
+    expect(b.input()).toHaveValue("first half");
+    if (change === "edit") {
+      b.fill("first half, second half");
+      save(b);
+    } else if (change === "clear") {
+      b.fill("");
+      save(b);
+    } else if (change === "clearDraft") {
+      // Cleared from a list beside the composers, as Drafts & sent does.
+      act(() => b.input().focus());
+      act(() => clearDraft({ scope: "scope" }, "draft:channel"));
+      expect(b.input()).toHaveValue("");
+    } else {
+      b.fill("Finished in the other composer");
+      await b.user.click(
+        within(b.container).getByRole("button", { name: "Send message" }),
+      );
+      expect(a.messages.send).toHaveBeenCalledOnce();
+      expect(b.input()).toHaveValue("");
+    }
+    expect(a.input()).toHaveValue(
+      change === "edit" ? "first half, second half" : "",
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      within(a.container).queryByRole("button", { name: "Load saved draft" }),
+    ).not.toBeInTheDocument();
+    // Neither composer is left stale: the next edit saves and is followed.
+    a.fill("Typed next");
+    save(a);
+    expect(readView("scope", "draft:channel", null)).toMatchObject({
+      text: "Typed next",
+    });
+    expect(b.input()).toHaveValue("Typed next");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  },
+);
 
 it("compares before local edits and Send even if the storage event has not arrived", async () => {
   const h = mount();
@@ -13037,6 +13711,32 @@ it("compares before local edits and Send even if the storage event has not arriv
   expect(readView("scope", "draft:channel", "")).toBe("Saved elsewhere");
   await h.user.click(screen.getByRole("button", { name: "Load saved draft" }));
   expect(h.input()).toHaveValue("Saved elsewhere");
+});
+
+it("holds a conflict raised by the send-start guard through an unrelated write", async () => {
+  const h = mount();
+  h.fill("Local body");
+  localStorage.setItem(
+    'buzz-view.v1:["scope","draft:channel"]',
+    JSON.stringify("Saved elsewhere"),
+  );
+  await h.user.click(screen.getByRole("button", { name: "Send message" }));
+  expect(h.messages.send).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert")).toHaveTextContent(/changed elsewhere/);
+  // The typed text was saved before the guard ran and focus has left the
+  // composer, so only the shown conflict keeps it.
+  act(() => (document.activeElement as HTMLElement).blur());
+  expect(document.body).toHaveFocus();
+  act(() => writeView("scope", "draft:other", "Unrelated"));
+  expect(screen.getByRole("alert")).toHaveTextContent(/changed elsewhere/);
+  expect(h.input()).toHaveValue("Local body");
+  expect(readView("scope", "draft:channel", "")).toBe("Saved elsewhere");
+  await h.user.click(screen.getByRole("button", { name: "Keep my draft" }));
+  expect(h.input()).toHaveValue("Local body");
+  expect(readView("scope", "draft:channel", "")).toMatchObject({
+    text: "Local body",
+  });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
 it("saves a content-free conflict trace and preserves Keep my draft", async () => {
@@ -13135,6 +13835,76 @@ it("leaves active message-edit content alone and reconciles the draft on return"
   expect(h.input()).toHaveValue("Draft saved elsewhere");
   expect(h.messages.send).not.toHaveBeenCalled();
 });
+
+// The draft was hidden during the edit. Leaving it returns focus to the editor,
+// which does not make saved text the user's to keep; unsaved text still is.
+it.each([
+  ["loads", "saved"],
+  ["offers", "unsaved"],
+] as const)(
+  "%s a draft changed elsewhere when leaving a message edit begun over a typed, %s draft",
+  (_outcome, draft) => {
+    const { session } = mount({}, undefined, first.pubkey);
+    cleanup();
+    const row = editableMessage();
+    let scope: ReturnType<typeof useMessageEditScope>;
+    function Probe() {
+      scope = useMessageEditScope();
+      return null;
+    }
+    render(
+      <MessageEditScope>
+        <Probe />
+        <MessageComposer
+          session={session}
+          scope="scope"
+          channelId="channel"
+          channelName="General"
+          editMessages={[row]}
+        />
+      </MessageEditScope>,
+      { wrapper: ToastProvider },
+    );
+    const input = screen.getByRole<ComposerInputElement>("textbox");
+    const type = (text: string) => {
+      act(() => {
+        input.focus();
+        input.value = text;
+      });
+      fireEvent.input(input);
+    };
+    type("Typed and saved");
+    act(() => input.blur());
+    expect(readView("scope", "draft:channel", null)).toMatchObject({
+      text: "Typed and saved",
+    });
+    if (draft === "unsaved") {
+      const fail = vi
+        .spyOn(Storage.prototype, "setItem")
+        .mockImplementation(() => {
+          throw Error("full");
+        });
+      try {
+        type("Typed and not saved");
+        act(() => input.blur());
+      } finally {
+        fail.mockRestore();
+      }
+    }
+    act(() => scope?.current?.(row));
+    expect(input).toHaveAccessibleName("Edit message");
+    act(() => writeView("scope", "draft:channel", "Draft saved elsewhere"));
+    expect(input).toHaveValue("Original message");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel edit" }));
+    expect(input).toHaveFocus();
+    if (draft === "unsaved") {
+      expect(input).toHaveValue("Typed and not saved");
+      fireEvent.click(screen.getByRole("button", { name: "Load saved draft" }));
+    }
+    expect(input).toHaveValue("Draft saved elsewhere");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  },
+);
 
 it.each([
   ["without", undefined],
