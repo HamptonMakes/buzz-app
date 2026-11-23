@@ -1439,6 +1439,38 @@ describe("GooseRuntime", () => {
     expect(turn).not.toContain("create a new worktree");
   });
 
+  it("starts an agent on a model route on its provider's default, and runs each turn on its pick", async () => {
+    const written: string[] = [];
+    const { deliver, goose } = setup({
+      wrap: (spawn) => async (id, options) => {
+        const process = await spawn(id, options);
+        return {
+          ...process,
+          write: (data: string) => {
+            written.push(data);
+            return process.write(data);
+          },
+        };
+      },
+    });
+    const config = {
+      ...DEFAULT_CONFIG,
+      provider: "openai",
+      model: "route:auto-balanced",
+    };
+    await deliver(message("1", "@Gander go"), { config, model: "o3" });
+    await vi.waitFor(() => expect(goose()?.turns).toHaveLength(1));
+    expect(written.some((data) => data.includes("route:"))).toBe(false);
+    expect(
+      written.some(
+        (data) =>
+          data.includes('"method":"session/set_config_option"') &&
+          data.includes('"o3"'),
+      ),
+    ).toBe(true);
+    goose()?.turns[0]?.finish();
+  });
+
   it("reads a queued turn's Canvas with the working location its own turn's prompt has", async () => {
     const { agent, deliver, goose } = setup({
       solo: new Set([channel]),

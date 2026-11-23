@@ -160,7 +160,7 @@ A bundled plugin can replace the setup per launch with
 seconds for it, then falls back to `BUZZ_RECOMMENDED_AGENT`, so set both.
 
 A bundled plugin can also add **model routes**, such as "Auto Balanced", to the
-Claude Code and Codex Model menus with `ctx.agents.registerModelRouter(router)`.
+Claude Code, Codex and Goose Model menus with `ctx.agents.registerModelRouter(router)`.
 An agent on a route saves `route:<id>` as its model. Before each turn it starts
 while idle in a conversation, Buzz asks `router.select` for one of the
 harness's models and a thinking level. A turn that steers a running one keeps
