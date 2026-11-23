@@ -26,7 +26,7 @@ export function useUnseen(seen: SeenStore | undefined, key: string) {
 
 /**
  * A one-time tip about a feature, opened by hovering or focusing the control it
- * explains. It stays available until the person chooses "Got it", which Seen
+ * explains. It stays available until the person chooses "Dismiss", which Seen
  * remembers; using the feature does not dismiss it. Without Seen, or once
  * seen, only the control renders.
  */
@@ -56,17 +56,17 @@ export function EducationHint({
       tone="inverse"
       aria-label="Tip"
     >
-      <div className="buzz-education-hint">
-        <span>{content}</span>
+      <span>
+        {content}{" "}
         <Button
           ref={action}
           variant="link"
           size="text"
           onClick={() => seen?.mark(seenKey)}
         >
-          Got it
+          Dismiss
         </Button>
-      </div>
+      </span>
     </PreviewCard>
   );
 }

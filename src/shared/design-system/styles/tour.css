@@ -70,13 +70,6 @@
     align-items: center;
     gap: var(--space-1);
   }
-  /* Education hint: a one-time tip, its dismiss on the same line. */
-  .buzz-education-hint {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--space-1) var(--space-3);
-  }
   @media (prefers-reduced-motion: reduce) {
     .buzz-tour-dot {
       transition: none;

@@ -848,8 +848,12 @@
   .buzz-preview-card[data-tone="inverse"] {
     @apply text-caption;
     --text-standard: var(--text-on-prominent);
+    display: block;
+    max-width: min(24rem, calc(100vw - 2rem), var(--available-width, 100vw));
+    border: 0;
     border-radius: calc((1lh + 2 * var(--space-1)) / 2);
     padding: var(--space-1) var(--space-2);
+    backdrop-filter: none;
     background: var(--affordance-prominent);
     color: var(--text-on-prominent);
     box-shadow: var(--shadow-sm);
