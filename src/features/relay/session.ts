@@ -2796,6 +2796,7 @@ export function createRelaySession(
     return messages === session.messages;
   }
   const session = Object.freeze({
+    lifetimeSignal: lifetime.signal,
     artifactIncremental: transport?.artifactIncremental,
     supportsMigrationWrites: true as const,
     memberAdditions,

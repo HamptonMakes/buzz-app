@@ -31,7 +31,8 @@ it("owns only channel-backed note routes, tools and panels while preserving sepa
   const pages = new PagesService(ctx);
   const panels = new PanelsService(ctx);
   provideNavigation(ctx, undefined);
-  ctx.provide("relay", fakeRelay().relay);
+  const active = fakeRelay();
+  ctx.provide("relay", active.relay);
   let scope: ReturnType<Context["plugin"]> | undefined;
   try {
     const before = addedKey(service.tools());
@@ -79,6 +80,28 @@ it("owns only channel-backed note routes, tools and panels while preserving sepa
       const result = JSON.parse((await get.call(client, {}, note)) as string);
       expect(result.markdown).toBe("Read as the agent");
       expect(connection).toHaveBeenCalledWith(client.key);
+      const set = service.tools().find((tool) => tool.name === "page_set");
+      if (!set) throw new Error("Missing page_set");
+      const create = (switchOrClose: () => void) =>
+        set.call(
+          {
+            ...client,
+            publish: async (template) => {
+              switchOrClose();
+              return client.publish(template);
+            },
+          },
+          {},
+          {
+            id: crypto.randomUUID(),
+            title: "Agent doc",
+            text: "Created in the background",
+          },
+        );
+      await expect(create(() => active.connect(false))).resolves.toContain(
+        "Created in the background",
+      );
+      await expect(create(background.dispose)).rejects.toThrow(/not confirmed/);
       connection.mockRestore();
     } finally {
       background.dispose();
