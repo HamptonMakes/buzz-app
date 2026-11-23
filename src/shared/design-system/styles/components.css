@@ -859,7 +859,9 @@
     max-width: min(24rem, calc(100vw - 2rem), var(--available-width, 100vw));
     border: 0;
     border-radius: calc((1lh + 2 * var(--space-1)) / 2);
-    padding: var(--space-1) var(--space-2);
+    /* The X glyph carries its own inset, so the copy side gets one step more
+       to look even. */
+    padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
     backdrop-filter: none;
     background: var(--affordance-prominent);
     color: var(--text-on-prominent);
