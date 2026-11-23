@@ -18,6 +18,7 @@ import { useLiveUpdatesInterrupted } from "./live-updates";
 import { useIdentityNames } from "../../features/identity-names/react";
 import { isTransientFailure } from "../../features/relay/errors";
 import { avatarMedia } from "../../shared/avatar-source";
+import { writeClipboardText } from "../../shared/clipboard";
 import { formatPublicKey } from "../../shared/identity/public-key";
 import {
   ArrowsClockwiseIcon,
@@ -35,6 +36,7 @@ import {
   MenuTrigger,
 } from "../../shared/design-system/ui/Menu";
 import { Select } from "../../shared/design-system/ui/Select";
+import { useToastNotification } from "../../shared/design-system/ui/Toast";
 import { Tooltip } from "../../shared/design-system/ui/Tooltip";
 import {
   NoteHistory,
@@ -100,6 +102,7 @@ export function NoteDocument({
   active?: boolean;
   initialFocus?: NoteFocus | undefined;
 }) {
+  const notify = useToastNotification();
   const cachedDraft = useRef(workspace.drafts.get(noteKey(address))).current;
   const [note, setNote] = useState<Note | undefined>(cachedDraft?.base);
   const [title, setTitle] = useState(cachedDraft?.title ?? "");
@@ -954,8 +957,16 @@ export function NoteDocument({
           <Dialog
             open
             onOpenChange={() => {}}
-            title="This doc has a newer revision"
-            description="Compare the latest contents with your unsaved draft before choosing what to keep."
+            title={
+              conflict.deleted
+                ? "This doc was moved to Trash"
+                : "This doc has a newer revision"
+            }
+            description={
+              conflict.deleted
+                ? "Copy your draft before opening the version in Trash."
+                : "Compare the latest contents with your unsaved draft before choosing what to keep."
+            }
             size="wide"
             height="stable"
             preventClose
@@ -968,20 +979,37 @@ export function NoteDocument({
                     setError("");
                   }}
                 >
-                  Use latest version
+                  {conflict.deleted ? "Open in Trash" : "Use latest version"}
                 </Button>
-                <Button
-                  disabled={conflict.deleted || !conflict.editable}
-                  onClick={() => {
-                    setNote(conflict);
-                    setAwaitingReceipt(false);
-                    setConflict(undefined);
-                    setError("");
-                    setSaveError("");
-                  }}
-                >
-                  Keep my draft
-                </Button>
+                {conflict.deleted ? (
+                  <Button
+                    onClick={async () => {
+                      try {
+                        await writeClipboardText(
+                          [title, markdown].filter(Boolean).join("\n\n"),
+                        );
+                        notify("Draft copied.", "success");
+                      } catch {
+                        notify("Couldn’t copy the draft.", "error");
+                      }
+                    }}
+                  >
+                    Copy draft
+                  </Button>
+                ) : (
+                  <Button
+                    disabled={!conflict.editable}
+                    onClick={() => {
+                      setNote(conflict);
+                      setAwaitingReceipt(false);
+                      setConflict(undefined);
+                      setError("");
+                      setSaveError("");
+                    }}
+                  >
+                    Keep my draft
+                  </Button>
+                )}
               </>
             }
           >

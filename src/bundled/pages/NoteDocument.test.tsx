@@ -8,6 +8,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { expect, it, vi, type MockInstance } from "vitest";
 import { composerDOMFixture } from "../../features/messages/composer-testing";
@@ -388,6 +389,29 @@ it("preserves a concurrent draft and does not overwrite until the user resolves 
   expect(f.save).toHaveBeenCalledTimes(2);
   expect(f.title).toHaveValue("My draft");
   expect(f.save.mock.calls[1]?.[0].title).toBe("Agent plan");
+});
+
+it("copies a pending draft before opening the remotely trashed version", async () => {
+  const f = await fixture();
+  userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const copy = vi.spyOn(navigator.clipboard, "writeText");
+  f.change("Pending title");
+  const event = await f
+    .client(f.ned)
+    .publish(
+      noteTemplate(f.note, { title: "", markdown: "" }, f.note, "delete"),
+    );
+  await act(async () => f.echo(event));
+  const dialog = screen.getByRole("dialog", {
+    name: "This doc was moved to Trash",
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Copy draft" }));
+  expect(copy).toHaveBeenCalledWith("Pending title\n\nOriginal body");
+  expect(screen.getByRole("dialog")).toBeVisible();
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Open in Trash" }),
+  );
+  expect(screen.getByText("This doc is in Trash.")).toBeVisible();
 });
 
 it("retains an undo made during a save when the tab closes and reopens", async () => {
