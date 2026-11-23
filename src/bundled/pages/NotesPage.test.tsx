@@ -89,7 +89,7 @@ it("quietly offers refresh when a live doc update cannot be read", async () => {
     title: "Revised plan",
     markdown: "Updated body",
   });
-  vi.spyOn(f.workspace, "open").mockRejectedValueOnce(
+  vi.spyOn(f.workspace, "reconcile").mockRejectedValueOnce(
     new ReadError("unavailable", "Relay read failed (503)", 503),
   );
   await act(async () => f.deliver(eventDto(update)));

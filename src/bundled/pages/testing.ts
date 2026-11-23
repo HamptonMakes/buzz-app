@@ -430,6 +430,20 @@ export async function notesFixture(options: { live?: boolean } = {}) {
     if (!base) throw new Error("No doc head");
     return client(key).publish(noteTemplate(base, draft, base));
   }
+  function deliverBatch(events: readonly RelayEvent[]) {
+    const channels = new Set<string>();
+    const followed = events.filter((event) => {
+      const channel = noteTag(
+        event,
+        event.kind === 39000 || event.kind === 39002 ? "d" : "h",
+      );
+      if (!channel || !liveChannels.includes(channel)) return false;
+      channels.add(channel);
+      return true;
+    });
+    if (options.live && followed.length)
+      live?.receive(followed, { phase: "live", sourceChannels: [...channels] });
+  }
   return {
     owner,
     session: owner.session,
@@ -446,14 +460,8 @@ export async function notesFixture(options: { live?: boolean } = {}) {
     accepted,
     queries,
     liveChannels: () => liveChannels,
-    deliver(event: RelayEvent) {
-      const channel = noteTag(
-        event,
-        event.kind === 39000 || event.kind === 39002 ? "d" : "h",
-      );
-      if (options.live && channel && liveChannels.includes(channel))
-        live?.receive([event], { phase: "live", sourceChannels: [channel] });
-    },
+    deliver: (event: RelayEvent) => deliverBatch([event]),
+    deliverBatch,
     client,
     seed,
     edit,

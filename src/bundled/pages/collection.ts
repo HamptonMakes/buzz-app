@@ -37,7 +37,8 @@ export function useNotesCollection(workspace: NotesWorkspace) {
     (channel) => collection.notes.some((note) => note.channel === channel),
   );
   const listing = useRef<AbortController | undefined>(undefined);
-  const reading = useRef(new Map<string, AbortController>());
+  const reading = useRef<AbortController | null>(null);
+  const queued = useRef(new Map<string, Note>());
   const revoked = useRef(new Set<string>());
   const setCollection = useCallback(
     (change: (page: NotesPage) => NotesPage) => {
@@ -56,7 +57,7 @@ export function useNotesCollection(workspace: NotesWorkspace) {
         cancelLoad();
       for (const channel of channels) {
         revoked.current.add(channel);
-        reading.current.get(channel)?.abort();
+        queued.current.delete(channel);
       }
       setCollection((old) => ({
         ...old,
@@ -72,7 +73,6 @@ export function useNotesCollection(workspace: NotesWorkspace) {
         (item) => noteKey(item) === noteKey(note),
       );
       if (previous?.revision === note.revision) return;
-      reading.current.get(note.channel)?.abort();
       if (previous) cancelLoad();
       setCollection((old) => ({
         ...old,
@@ -88,8 +88,9 @@ export function useNotesCollection(workspace: NotesWorkspace) {
     async (more = false) => {
       listing.current?.abort();
       if (!more) {
-        for (const request of reading.current.values()) request.abort();
-        reading.current.clear();
+        reading.current?.abort();
+        reading.current = null;
+        queued.current.clear();
       }
       const controller = new AbortController();
       listing.current = controller;
@@ -155,63 +156,89 @@ export function useNotesCollection(workspace: NotesWorkspace) {
   );
   useEffect(() => {
     void load();
-    const requests = reading.current;
+    const queue = queued.current;
     return () => {
       listing.current?.abort();
-      for (const request of requests.values()) request.abort();
-      requests.clear();
+      reading.current?.abort();
+      reading.current = null;
+      queue.clear();
     };
   }, [load]);
   const channels = [...new Set(collection.notes.map((note) => note.channel))]
     .sort()
     .join(":");
+  const reconcile = useCallback(async () => {
+    if (reading.current || !queued.current.size) return;
+    const request = new AbortController();
+    reading.current = request;
+    const { signal } = request;
+    try {
+      // Replay can touch every loaded page. Admit one bounded background batch
+      // at a time, while coalescing newer hints for addresses still queued.
+      while (!signal.aborted && queued.current.size) {
+        const batch = [...queued.current.values()].slice(0, 32);
+        for (const note of batch) queued.current.delete(note.channel);
+        const isCurrent = (before: Note) =>
+          !revoked.current.has(before.channel) &&
+          !queued.current.has(before.channel) &&
+          current.current.notes.some(
+            (note) =>
+              noteKey(note) === noteKey(before) &&
+              note.revision === before.revision,
+          );
+        try {
+          const heads = new Map(
+            (await workspace.reconcile(batch, signal)).map((head) => [
+              noteKey(head),
+              head,
+            ]),
+          );
+          signal.throwIfAborted();
+          for (const before of batch) {
+            if (!isCurrent(before)) continue;
+            const head = heads.get(noteKey(before));
+            if (head) changed(head);
+            else remove([before.channel]);
+          }
+        } catch (error) {
+          if (signal.aborted) return;
+          for (const before of batch) {
+            if (!isCurrent(before)) continue;
+            if (
+              (isTransientFailure(error) || cancelledRead(error)) &&
+              workspace.session.channels.get?.(before.channel)
+            )
+              setNeedsRefresh(true);
+            else remove([before.channel]);
+          }
+        }
+      }
+    } finally {
+      if (reading.current === request) reading.current = null;
+    }
+  }, [workspace, changed, remove]);
   useLayoutEffect(() => {
     if (!channels) return;
-    const requests = reading.current;
     const stop = workspace.session.artifacts.follow(
       channels.split(":"),
       (events) => {
-        const affected = new Set(
-          events
-            .filter(
-              (event) =>
-                event.kind !== 45010 ||
-                !current.current.notes.some(
-                  (note) => note.revision === event.id,
-                ),
-            )
-            .map((event) => noteTag(event, event.kind === 45010 ? "h" : "d")),
+        const known = new Map(
+          current.current.notes.map((note) => [note.channel, note]),
         );
-        for (const note of current.current.notes) {
-          if (!affected.has(note.channel) || revoked.current.has(note.channel))
+        for (const event of events) {
+          const artifact = event.kind === NOTE_KIND;
+          const channel = noteTag(event, artifact ? "h" : "d");
+          if (!channel || revoked.current.has(channel)) continue;
+          const note = known.get(channel);
+          if (
+            !note ||
+            (artifact &&
+              (note.revision === event.id || noteTag(event, "d") !== note.id))
+          )
             continue;
-          cancelLoad();
-          requests.get(note.channel)?.abort();
-          const controller = new AbortController();
-          requests.set(note.channel, controller);
-          void workspace
-            .open(note, controller.signal)
-            .then((head) => {
-              controller.signal.throwIfAborted();
-              requests.delete(note.channel);
-              if (
-                current.current.notes.some(
-                  (item) => noteKey(item) === noteKey(head),
-                )
-              )
-                changed(head);
-            })
-            .catch((error: unknown) => {
-              if (controller.signal.aborted) return;
-              requests.delete(note.channel);
-              if (
-                isTransientFailure(error) &&
-                workspace.session.channels.get?.(note.channel)
-              )
-                setNeedsRefresh(true);
-              else remove([note.channel]);
-            });
+          queued.current.set(channel, note);
         }
+        queueMicrotask(() => void reconcile());
       },
       remove,
     );
@@ -221,7 +248,7 @@ export function useNotesCollection(workspace: NotesWorkspace) {
       .filter((channel) => !workspace.session.channels.get?.(channel));
     if (denied.length) remove(denied);
     return stop;
-  }, [workspace, channels, cancelLoad, changed, remove]);
+  }, [workspace, channels, reconcile, remove]);
   const showRefresh =
     !error &&
     (needsRefresh ||

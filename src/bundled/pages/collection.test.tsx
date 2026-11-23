@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { workspaceFixture, gate } from "./ui-testing";
 import { useNotesCollection } from "./collection";
-import { noteTemplate, noteUrl } from "./model";
+import { NOTE_KIND, noteTemplate, noteUrl } from "./model";
 import { signed } from "../../features/relay/testing";
 import { eventDto } from "../../features/relay/events";
 
@@ -66,6 +66,50 @@ async function fixture(loseAtFollow = false) {
   return { ...f, ...view, mine, shared, storage, roster };
 }
 
+it("reconciles multiple changed catalogue heads in a single background read", async () => {
+  const reads = vi.fn();
+  const f = await workspaceFixture({ live: true }, (session) => ({
+    ...session,
+    snapshotRead: async (filters, options) => {
+      reads(filters, options);
+      if (!session.snapshotRead) throw new Error("Missing relay read");
+      return session.snapshotRead(filters, options);
+    },
+  }));
+  const first = f.seed("First", "Original");
+  const second = f.seed("Second", "Original");
+  const view = renderHook(() => useNotesCollection(f.workspace));
+  await waitFor(() =>
+    expect(f.liveChannels()).toEqual(
+      expect.arrayContaining([first.channel, second.channel]),
+    ),
+  );
+  const events = await Promise.all(
+    [first, second].map((note) =>
+      f.edit(f.viewer, note, { title: note.title, markdown: "Updated" }),
+    ),
+  );
+  reads.mockClear();
+  await act(async () => f.deliverBatch(events.map(eventDto)));
+  await waitFor(() =>
+    expect(view.result.current.collection.notes).toEqual([
+      expect.objectContaining({ markdown: "Updated" }),
+      expect.objectContaining({ markdown: "Updated" }),
+    ]),
+  );
+  expect(reads).toHaveBeenCalledExactlyOnceWith(
+    [
+      expect.objectContaining({
+        kinds: [NOTE_KIND],
+        "#h": expect.arrayContaining([first.channel, second.channel]),
+        "#d": expect.arrayContaining([first.id, second.id]),
+        consistency: "strong",
+      }),
+    ],
+    expect.objectContaining({ priority: "background" }),
+  );
+});
+
 it("drops access lost between the finite read and follower attachment", async () => {
   const f = await fixture(true);
   expect(f.result.current.collection.notes.map((note) => note.id)).toEqual([
@@ -108,7 +152,7 @@ it("follows unopened catalogue heads, retains tombstones for the Trash filter, a
     ).toBe(true),
   );
   const read = vi
-    .spyOn(f.workspace, "open")
+    .spyOn(f.workspace, "reconcile")
     .mockRejectedValueOnce(new Error("Read unavailable"));
   // A failed fresh access read cannot retain the old cached title/body.
   await act(async () => f.roster(true, 2_000_000_002));
@@ -171,10 +215,10 @@ it("discards a changed head whose fresh read finishes after revocation", async (
   const f = await fixture();
   const pending = gate();
   const read = vi
-    .spyOn(f.workspace, "open")
+    .spyOn(f.workspace, "reconcile")
     .mockImplementationOnce(async () => {
       await pending.promise;
-      return f.shared;
+      return [f.shared];
     });
   const event = await f.edit(f.sam, f.shared, {
     title: "New head",
@@ -195,7 +239,7 @@ it("discards a changed head whose fresh read finishes after revocation", async (
     await waitFor(() =>
       expect(f.result.current.collection.notes).toHaveLength(2),
     );
-    expect(read.mock.calls[0]?.[1]?.aborted).toBe(true);
+    // The shared batch may still serve other readable docs when this one is revoked.
   } finally {
     await act(async () => {
       pending.release();

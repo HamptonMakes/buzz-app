@@ -19,6 +19,7 @@ import {
   PUBKEY,
   UUID,
   noteAddress,
+  noteKey,
   independentNoteStorage,
   noteTag,
   noteTemplate,
@@ -74,14 +75,16 @@ export function createNotesWorkspace(session: RelaySession) {
   const snapshot = async (
     filters: Parameters<NoteRead>[0],
     caller?: AbortSignal,
+    priority?: "background",
   ) => {
     const active = signal(caller);
+    const options = { signal: active, ...(priority ? { priority } : {}) };
     active.throwIfAborted();
     if (!session.snapshotRead)
       throw new Error("Connect to your community to use working docs.");
     let events: readonly RelayEvent[];
     try {
-      events = await session.snapshotRead(filters, { signal: active });
+      events = await session.snapshotRead(filters, options);
     } catch (error) {
       // Initial signed roster discovery can invalidate a concurrent finite read.
       // Retry that read once under the new access epoch; caller cancellation,
@@ -92,7 +95,7 @@ export function createNotesWorkspace(session: RelaySession) {
         error.name !== "AbortError"
       )
         throw error;
-      events = await session.snapshotRead(filters, { signal: active });
+      events = await session.snapshotRead(filters, options);
     }
     active.throwIfAborted();
     return events;
@@ -453,6 +456,38 @@ export function createNotesWorkspace(session: RelaySession) {
       );
     }
   }
+  async function reconcile(
+    addresses: readonly NoteAddress[],
+    caller: AbortSignal,
+  ) {
+    const active = signal(caller);
+    await session.channels.resolve?.(
+      [...new Set(addresses.map((address) => address.channel))],
+      { signal: active, consistency: "strong", priority: "background" },
+    );
+    const readable = addresses.filter((address) =>
+      session.channels.get?.(address.channel),
+    );
+    if (!readable.length) return [];
+    const expected = new Set(readable.map(noteKey));
+    const events = await snapshot(
+      [
+        {
+          kinds: [NOTE_KIND],
+          "#h": readable.map((address) => address.channel),
+          "#d": readable.map((address) => address.id),
+          limit: readable.length,
+          consistency: "strong",
+        },
+      ],
+      active,
+      "background",
+    );
+    return events.flatMap((event) => {
+      const head = parseNote(event);
+      return head && expected.has(noteKey(head)) ? [head] : [];
+    });
+  }
   const list = (cursor?: Cursor, caller?: AbortSignal) =>
     readNotesPage(
       read,
@@ -466,6 +501,7 @@ export function createNotesWorkspace(session: RelaySession) {
     read,
     publish,
     list,
+    reconcile,
     create,
     resolve,
     authority,
