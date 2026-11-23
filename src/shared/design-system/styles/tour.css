@@ -33,6 +33,11 @@
     gap: var(--space-2);
     padding-inline-start: var(--space-1);
   }
+  .buzz-tour-footer[data-choice] {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
   .buzz-tour-dots {
     display: flex;
     align-items: center;
@@ -60,6 +65,10 @@
     display: flex;
     align-items: center;
     gap: var(--space-1);
+  }
+  .buzz-tour-footer[data-choice] .buzz-tour-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
   /* Education hint: a one-time tip with its dismiss beneath the copy. */
   .buzz-education-hint {

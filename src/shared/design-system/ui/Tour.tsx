@@ -149,7 +149,11 @@ export function Tour({
               Step {index + 1} of {pages.length}
             </span>
           </div>
-          <div className="buzz-tour-footer">
+          <div
+            className="buzz-tour-footer"
+            // A choice needs the full width, so its buttons sit under the dots.
+            data-choice={last && declineLabel ? "" : undefined}
+          >
             {pages.length > 1 ? (
               <span className="buzz-tour-dots" aria-hidden="true">
                 {pages.map((item, position) => (
