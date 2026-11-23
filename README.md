@@ -24,19 +24,23 @@ such as the macOS Keychain. On first launch, pick one:
 
 - **Create account** signs you up with your email. Buzz makes your key and backs
   it up to the account.
-- **Sign in** restores your key from your account's backup.
-- **Other options** skips the account: enter a community's address or invite
-  link, then paste a private key (`nsec1…`), for example from
-  **Identity details** in Buzz 0.X.
+- **Sign in** opens the key your account holds. On a new computer that works
+  only if the key was backed up.
+- **Other options** starts with a community's address or invite link. A
+  community Buzz hosts takes you to sign-in. Any other community also lets you
+  skip the account with **Use an existing key**: paste a private key
+  (`nsec1…`), for example from **Identity details** in Buzz 0.X.
 
-Coming from Buzz 0.X on this computer? **Create account** and **Sign in** use
-its identity, and **Other options** offers to bring it over in one click. macOS
-may ask you to allow Keychain access.
+Coming from Buzz 0.X on this computer? **Other options** offers to bring its
+identity over in one click. **Create account** and **Sign in** bring it over
+only when the account has no key yet; an account that already has one keeps
+its own. macOS may ask you to allow Keychain access.
 
-**Without an account, save a copy of your key.** Buzz doesn't back it up for
-you. Open **Settings → Buzz → Identity**, click your private key, choose
-**Copy**, and keep it somewhere safe, such as a password manager. Without it you
-can't get your identity back on another computer.
+**Check that your key is backed up.** Setup can finish without a backup, even
+with an account. Open **Settings → Buzz → Identity**: if it doesn't say
+"A backup is saved with" your account, click your private key, choose
+**Copy**, and keep it somewhere safe, such as a password manager. Without a
+backup or a copy you can't get your identity back on another computer.
 
 ### 3. Join a community
 
@@ -105,8 +109,8 @@ installing.
 - The Windows installer is unsigned, and Intel macOS, Windows and Linux get
   less testing than Apple Silicon macOS.
 - Claude and Codex agents need macOS or Linux. Goose and Pi work everywhere.
-- Without an account, Buzz doesn't back up your key, so keep your own copy
-  (step 2).
+- Unless **Settings → Buzz → Identity** says your key is backed up, keep your
+  own copy (step 2).
 - Bringing your identity over from Buzz 0.X doesn't bring your agents. On the
   Agents page, bring them with **Import them now** or
   **New agent → Import an agent**, and teams with **New team → Import a team**.
