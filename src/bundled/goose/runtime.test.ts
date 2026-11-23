@@ -1458,8 +1458,10 @@ describe("GooseRuntime", () => {
       provider: "openai",
       model: "route:auto-balanced",
     };
-    await deliver(message("1", "@Gander go"), { config, model: "o3" });
+    const route = vi.fn(async () => ({ model: "o3" }));
+    await deliver(message("1", "@Gander go"), { config, route });
     await vi.waitFor(() => expect(goose()?.turns).toHaveLength(1));
+    expect(route).toHaveBeenCalledTimes(1);
     expect(written.some((data) => data.includes("route:"))).toBe(false);
     expect(
       written.some(
@@ -1468,6 +1470,40 @@ describe("GooseRuntime", () => {
           data.includes('"o3"'),
       ),
     ).toBe(true);
+    goose()?.turns[0]?.finish();
+  });
+
+  it("sends nothing when its model route's choice was stopped", async () => {
+    const { deliver, goose } = setup();
+    const config = { ...DEFAULT_CONFIG, model: "route:auto-balanced" };
+    const route = vi.fn(async () => undefined);
+    await deliver(message("1", "@Gander go"), { config, route });
+    await vi.waitFor(() => expect(route).toHaveBeenCalledTimes(1));
+    await deliver(message("2", "@Gander next"), { config });
+    await vi.waitFor(() => expect(goose()?.turns).toHaveLength(1));
+    // The first turn Goose sees is the plain one.
+    expect(JSON.stringify(goose()?.turns[0])).toContain("@Gander next");
+  });
+
+  it("asks no model route for a message that steers a running turn", async () => {
+    const { deliver, goose } = setup({ scope: "channel", hold: true });
+    const config = {
+      ...DEFAULT_CONFIG,
+      scope: "channel",
+      model: "route:auto-balanced",
+    };
+    const first = vi.fn(async () => ({ model: "o3" }));
+    await deliver(message("1", "@Gander first"), { config, route: first });
+    await vi.waitFor(() => expect(goose()?.turns).toHaveLength(1));
+    const steer = vi.fn(async () => ({ model: "o4" }));
+    await deliver(message("2", "@Gander second"), { config, route: steer });
+    await vi.waitFor(() =>
+      expect(goose()?.turns[0]?.steered).toEqual([
+        expect.stringContaining("@Gander second"),
+      ]),
+    );
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(steer).not.toHaveBeenCalled();
     goose()?.turns[0]?.finish();
   });
 

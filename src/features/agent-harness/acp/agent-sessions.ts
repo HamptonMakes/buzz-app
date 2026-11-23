@@ -10,7 +10,7 @@
 import { absoluteWorkspace } from "../../../bundled/codex/config";
 import type { SessionAction } from "../../agents/service";
 import type { AcpProcess } from "./process";
-import type { AcpSession } from "./session";
+import type { AcpSession, TurnRoute } from "./session";
 import { codeOf, errorMessage } from "./steps";
 import type {
   ActivityReceipt,
@@ -367,7 +367,9 @@ export class AgentSessions {
    * takes that name;
    * `model`, one of the agent's
    * provider's, and `effort`, one of its thinking levels, are what its turn
-   * runs on, and `kept`, a synced level, one it must run on. Once `signal` aborts, it stops
+   * runs on, and `kept`, a synced level, one it must run on; `route`
+   * chooses them instead for a turn it starts (`Delivery.route`). Once
+   * `signal` aborts, it stops
    * waiting for a session to open, which is then kept for the next message,
    * and sends nothing. */
   async deliver(
@@ -383,6 +385,7 @@ export class AgentSessions {
       model,
       effort,
       kept,
+      route,
       ...activity
     }: Readonly<{
       current?: () => boolean;
@@ -393,6 +396,7 @@ export class AgentSessions {
       model?: string;
       effort?: string;
       kept?: string;
+      route?: TurnRoute;
     }> &
       ActivityReceipt = {},
   ): Promise<Settled> {
@@ -440,6 +444,15 @@ export class AgentSessions {
       }
       const live = this.live.get(key);
       if (!live) break;
+      // A turn on an idle session is chosen now, so its level is checked as
+      // a picked one is; a busy session's queue asks once the turn starts.
+      if (route && live.session.open && !live.session.busy) {
+        const chosen = await route();
+        if (!chosen) return { ok: true, undelivered: true };
+        ({ model, effort } = chosen);
+        route = undefined;
+        continue;
+      }
       if (
         !live.session.open ||
         (!live.session.busy && (this.stale(live) || this.leveled(live, effort)))
@@ -465,6 +478,7 @@ export class AgentSessions {
         model,
         effort,
         kept,
+        route,
       );
     }
     // Reserved before anything is awaited, so a message that comes meanwhile
@@ -506,6 +520,7 @@ export class AgentSessions {
           model,
           effort,
           kept,
+          route,
         ),
       };
     })();
@@ -1116,6 +1131,7 @@ export class AgentSessions {
     model: string | undefined,
     effort?: string,
     kept?: string,
+    route?: TurnRoute,
   ) {
     const sent = live.session.send(
       text,
@@ -1129,6 +1145,7 @@ export class AgentSessions {
       model,
       effort,
       kept,
+      route,
     );
     // A final Buzz send can answer before the harness finishes its model work.
     void live.session.idle().then(() => {

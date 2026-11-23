@@ -9,6 +9,7 @@ import {
   routeOf,
   routesFor,
   routeTurn,
+  turnRoute,
   setModelRouters,
   withRoutes,
 } from "./model-routes";
@@ -71,7 +72,6 @@ const turn = (
   current: "route:auto-balanced",
   automatic: false,
   models: MODELS,
-  busy: false,
   request: {
     agent: { pubkey: "a".repeat(64), name: "Agent" },
     prompt: "Fix a typo",
@@ -193,25 +193,42 @@ it("asks the saved route's router for an idle turn's model and effort", async ()
   );
 });
 
-it("lets an explicit model pick win and keeps a running turn's pick", async () => {
+it("lets an explicit model pick win", async () => {
   const select = vi.fn<ModelRouter["select"]>(async () => ({
     model: "sonnet",
   }));
   setModelRouters([router(select)]);
+  expect(
+    turnRoute({
+      harness: "claude-code",
+      pick: { model: "opus" },
+      current: "route:auto-balanced",
+      automatic: false,
+    }),
+  ).toBeUndefined();
   await expect(routeTurn(turn({ pick: { model: "opus" } }))).resolves.toEqual({
     model: "opus",
   });
-  await expect(
-    routeTurn(turn({ busy: true, last: { model: "opus", effort: "medium" } })),
-  ).resolves.toEqual({
-    model: "opus",
-    effort: "medium",
-    routed: {
-      route: expect.objectContaining({ id: "auto-balanced" }),
-      kept: true,
-    },
-  });
   expect(select).not.toHaveBeenCalled();
+});
+
+it("reads the thread once, ending the read with the choice", async () => {
+  const read = vi.fn(async (_signal: AbortSignal) => [
+    { pubkey: "b".repeat(64), content: "Earlier", createdAt: 1 },
+  ]);
+  let signal: AbortSignal | undefined;
+  setModelRouters([
+    router(async (request) => {
+      await request.history();
+      await request.history();
+      signal = request.signal;
+      return { model: "sonnet" };
+    }),
+  ]);
+  await routeTurn(turn({ request: { ...turn().request, history: read } }));
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(read.mock.calls[0]?.[0]).toBe(signal);
+  expect(signal?.aborted).toBe(true);
 });
 
 it("routes a per-message route pick and Automatic's route", async () => {

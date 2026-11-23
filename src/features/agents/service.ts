@@ -116,7 +116,7 @@ import {
   type AgentHookContext,
   type AgentHookDispatchOptions,
 } from "./hooks";
-import { ownerReads, readyOwnerReads } from "./reads";
+import { ownerReads, readyOwnerReads, workflowMarked } from "./reads";
 import { createToolOperation, type AgentToolProvider } from "./tool-operation";
 import {
   assignConversationFolder as assignFolder,
@@ -202,12 +202,15 @@ import {
   type ModelRouter,
   type RoutedPick,
   type RouteMessage,
+  routeOf,
   routesFor,
   routeTurn,
   setModelRouters,
   type TurnPick,
+  turnRoute,
   withRoutes,
 } from "./model-routes";
+import { fromOwner as ownerSent, workflowOf } from "./owner-attestation";
 import { channelTabs } from "../../bundled/channels/useChannelTabState";
 import type { RelayData } from "../relay/service";
 import type { RelaySession } from "../relay/session";
@@ -960,6 +963,14 @@ export type Delivery<Config = unknown> = Readonly<{
   /** The effort level the owner asked for in the triggering message: one of
    * that model's `efforts`. Absent means the agent's own default. */
   effort?: string;
+  /** Set when the agent runs on a model route, which chooses the model and
+   * effort of a turn this delivery starts; `model` and `effort` are then
+   * absent. Call it where the delivery starts a turn, including one put off
+   * while the session compacts, never where it steers a running turn, which
+   * keeps its own picks. It answers once, the same on every call; undefined
+   * means the owner stopped the request while it chose, so nothing runs.
+   * Without a call the turn runs on the agent's own default. */
+  route?: () => Promise<TurnPick | undefined>;
   /** A section for each team the agent is on, with the team's name, roster and
    * instructions, to follow the agent's own instructions. Absent without one. */
   team?: string;
@@ -1672,8 +1683,6 @@ export type ModelSettings = Readonly<{
  * it, and leaving it out keeps it. */
 export type NoteChange = Readonly<{ note?: PluginNote | null }>;
 const MODEL_FIELDS = ["model", "provider", "effort"] as const;
-/** Conversations whose latest routed pick is kept for their steers. */
-const ROUTED_PICKS = 512;
 /** Earlier thread messages a model router may read. */
 const ROUTE_HISTORY = 20;
 /** The most prompt text a model router is given. */
@@ -2547,8 +2556,6 @@ export class AgentsService extends Service implements Agents {
   private readonly contributions;
   private readonly tabContributions;
   private readonly modelRouters;
-  /** Each conversation's latest routed pick, which a steer keeps. */
-  private readonly routedPicks = new Map<string, TurnPick>();
   /** Each registered type's own `models`, before routes are added, by key. */
   private readonly ownModels = new Map<
     string,
@@ -2870,7 +2877,7 @@ export class AgentsService extends Service implements Agents {
           pinNativePlacement,
         ),
       route: (agent, type, trigger, place, pick, signal) =>
-        this.routedPick(agent, type, trigger, place, pick, signal),
+        this.modelRoute(agent, type, trigger, place, pick, signal),
       prepareSession: async (agent, type, trigger, placement, signal) => {
         if (
           !type.sessionAdmission ||
@@ -3944,64 +3951,88 @@ export class AgentsService extends Service implements Agents {
       throw new Error("A model router needs an id, routes and select");
     this.modelRouters.register(this.ctx, router);
   }
-  /** The pick a turn starts with: `pick`, unless the agent runs on a model
-   * route, whose router chooses unless the turn steers a running one. */
-  private async routedPick(
+  /** How a turn's model is chosen when the agent runs on a model route:
+   * undefined when `pick` holds (no route, an explicit model pick, an agent
+   * that runs elsewhere, or a mention its owner didn't send). */
+  private async modelRoute(
     agent: Agent,
     type: RegisteredAgentType,
     trigger: Trigger,
     place: SessionPlace | undefined,
     pick: TurnPick,
     signal: AbortSignal,
-  ): Promise<RoutedPick> {
+  ): Promise<((signal: AbortSignal) => Promise<RoutedPick>) | undefined> {
     const models = this.ownModels.get(type.key) ?? type.models;
     // Hosted, or on another execution target, it runs on that one's models.
-    if (agent.place === "hosted" || agent.executionBinding) return pick;
-    if (!routesFor(type.id).routes.length || !models) return pick;
+    if (agent.place === "hosted" || agent.executionBinding) return undefined;
+    if (!routesFor(type.id).routes.length || !models) return undefined;
+    if (pick.model && !routeOf(pick.model)) return undefined;
+    // The router reads the prompt and the thread: only for a mention the
+    // harness will act on.
+    if (
+      trigger.type === "mention" &&
+      !(await this.ownerMention(agent, trigger.event, place?.channelId, signal))
+    )
+      return undefined;
     let offered: Models;
     try {
       offered = await models(agent);
     } catch (error) {
       console.warn(`Agent type ${type.key} could not list its models`, error);
-      return pick;
+      return undefined;
     }
-    const conversation = place && this.sessionPlace(agent, type, place);
-    const key =
-      conversation &&
-      JSON.stringify([
-        agent.key,
-        conversation.channelId,
-        conversation.root ?? "",
-        conversation.community === true,
-      ]);
-    const state = place ? this.sessionState(agent.key, place) : "idle";
-    let history: Promise<readonly RouteMessage[]> | undefined;
-    const routed = await routeTurn({
-      harness: type.id,
-      pick,
-      current: offered.current,
-      automatic: onAutomatic(agent.config, type.id),
-      models: offered.models,
-      busy: state === "active" || state === "compacting",
-      last: key ? this.routedPicks.get(key) : undefined,
-      request: {
-        agent: { pubkey: agent.pubkey, name: agent.name },
-        prompt: promptOf(trigger),
-        history: () =>
-          (history ??= this.routeHistory(agent, trigger, place, signal)),
-      },
-      signal,
-    });
-    if (key && routed.routed && !routed.routed.kept) {
-      this.routedPicks.delete(key);
-      this.routedPicks.set(key, {
-        ...(routed.model ? { model: routed.model } : {}),
-        ...(routed.effort ? { effort: routed.effort } : {}),
+    const automatic = onAutomatic(agent.config, type.id);
+    if (
+      !turnRoute({
+        harness: type.id,
+        pick,
+        current: offered.current,
+        automatic,
+      })
+    )
+      return undefined;
+    return (selection) =>
+      routeTurn({
+        harness: type.id,
+        pick,
+        current: offered.current,
+        automatic,
+        models: offered.models,
+        request: {
+          agent: { pubkey: agent.pubkey, name: agent.name },
+          prompt: promptOf(trigger),
+          history: (read) => this.routeHistory(agent, trigger, place, read),
+        },
+        signal: selection,
       });
-      if (this.routedPicks.size > ROUTED_PICKS)
-        this.routedPicks.delete(this.routedPicks.keys().next().value as string);
+  }
+  /** Whether `event` directs the agent as its owner's, as every harness
+   * checks before it acts on a mention. */
+  private async ownerMention(
+    agent: Agent,
+    event: RelayEvent,
+    channelId: string | undefined,
+    signal: AbortSignal,
+  ) {
+    const relay = this.relay(agent.key);
+    try {
+      // A workflow's mention waits out a reconnect, as the harness's does.
+      const reads = workflowMarked(event, agent.owner)
+        ? await readyOwnerReads(relay, agent, signal, channelId)
+        : ownerReads(relay, agent.pubkey);
+      return await ownerSent(
+        event,
+        agent.owner,
+        workflowOf(reads, agent.pubkey),
+      );
+    } catch (error) {
+      signal.throwIfAborted();
+      console.warn(
+        "A mention's owner could not be checked for its route",
+        error,
+      );
+      return false;
     }
-    return routed;
   }
   /** The thread before a routed turn's message, oldest first: at most
    * ROUTE_HISTORY messages, read once and only if its router asks. */

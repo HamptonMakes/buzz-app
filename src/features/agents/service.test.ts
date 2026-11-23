@@ -4224,11 +4224,8 @@ it("passes the model and effort its owner asked for, and no other", async () => 
   ]);
 });
 
-it("asks a model route for an idle turn's model and keeps it for a steer", async () => {
-  let state: "idle" | "active" = "idle";
-  const { service, run, emit, ctx } = await setup({
-    sessionControls: { state: () => state, run: async () => {} },
-  });
+it("lets the harness ask a model route as its turn starts, once", async () => {
+  const { service, run, emit, ctx } = await setup();
   await service.create({ type: "example/echo", name: "Echo" });
   const select = vi.fn(async () => ({
     model: "deep",
@@ -4249,14 +4246,31 @@ it("asks a model route for an idle turn's model and keeps it for a steer", async
           : undefined,
       select,
     });
-  const asked = (id: string, ...tags: string[][]) =>
+  const asked = (id: string, pubkey: string) =>
     event(id, {
-      pubkey: viewer,
-      tags: [["h", channel], ["p", bot], ["model", bot, "route:auto"], ...tags],
+      pubkey,
+      tags: [
+        ["h", channel],
+        ["p", bot],
+        ["model", bot, "route:auto"],
+      ],
     });
-  const first = asked("1d1e");
-  emit({ events: [first] });
+  emit({ events: [asked("1d1e", viewer)] });
   await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+  const delivery = run.mock.calls[0]?.[0];
+  // Nothing is chosen until the harness starts a turn: a steer never asks.
+  expect(delivery?.model).toBeUndefined();
+  expect(delivery?.effort).toBeUndefined();
+  expect(select).not.toHaveBeenCalled();
+  await expect(delivery?.route?.()).resolves.toEqual({
+    model: "deep",
+    effort: "max",
+  });
+  await expect(delivery?.route?.()).resolves.toEqual({
+    model: "deep",
+    effort: "max",
+  });
+  expect(select).toHaveBeenCalledTimes(1);
   expect(select).toHaveBeenCalledWith(
     expect.objectContaining({
       harness: "echo",
@@ -4267,19 +4281,62 @@ it("asks a model route for an idle turn's model and keeps it for a steer", async
       ],
     }),
   );
-  expect(run.mock.calls[0]?.[0]).toMatchObject({
-    model: "deep",
-    effort: "max",
-  });
-  // The conversation now has a turn running: the next message steers it.
-  state = "active";
-  emit({ events: [asked("57ee", ["e", first.id, "", "reply"])] });
+  // Anyone else's mention never reaches the router.
+  emit({ events: [asked("57ee", "f".repeat(64))] });
   await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2));
-  expect(select).toHaveBeenCalledTimes(1);
-  expect(run.mock.calls[1]?.[0]).toMatchObject({
-    model: "deep",
-    effort: "max",
+  expect(run.mock.calls[1]?.[0]?.route).toBeUndefined();
+});
+
+it("lets the owner stop a model route while it chooses, running nothing", async () => {
+  const { service, run, emit, ctx, activity } = await setup();
+  await service.create({ type: "example/echo", name: "Echo" });
+  let asked: AbortSignal | undefined;
+  const select = vi.fn(
+    ({ signal }: { signal: AbortSignal }) =>
+      new Promise<undefined>((_, reject) => {
+        asked = signal;
+        signal.addEventListener("abort", () => reject(signal.reason));
+      }),
+  );
+  ctx
+    .extend({
+      pluginOwner: bundledOwner(
+        Object.freeze({ id: "org.example", revision: "bundled" }),
+      ),
+    })
+    .agents.registerModelRouter({
+      id: "router",
+      routes: (harness) =>
+        harness === "echo"
+          ? { routes: [{ id: "auto", label: "Auto" }] }
+          : undefined,
+      select,
+    });
+  // As a harness does, it asks the route as its turn starts.
+  let choosing: Promise<unknown> | undefined;
+  run.mockImplementationOnce(async ({ route }) => {
+    choosing = route?.();
+    await choosing;
   });
+  emit({
+    events: [
+      event("1d1e", {
+        pubkey: viewer,
+        tags: [
+          ["h", channel],
+          ["p", bot],
+          ["model", bot, "route:auto"],
+        ],
+      }),
+    ],
+  });
+  await vi.waitFor(() => expect(select).toHaveBeenCalled());
+  const work = activity.reader.work()[0];
+  if (!work) throw new Error("no work");
+  expect(work.stoppable).toBe(true);
+  await activity.reader.interrupt?.(work);
+  await expect(choosing).resolves.toBeUndefined();
+  expect(asked?.aborted).toBe(true);
 });
 
 it("lists model routes only from bundled plugins", async () => {

@@ -1,12 +1,12 @@
 // Model routes: choices such as "Auto Balanced" that a bundled plugin adds to
 // a harness's Model menu (`Agents.registerModelRouter`). An agent saves a
-// route as its model, `route:<id>`. Each turn it starts while idle in that
-// conversation asks the plugin's router which of the harness's own models and
-// effort levels to run it on; a message that steers a running turn keeps that
-// turn's choice, so the session's prompt cache stays warm. The choice reaches
-// the harness as the turn's model and effort picks (`Delivery.model`,
-// `Delivery.effort`), as a per-message pick does: no harness ever runs a
-// route id, and launches its process on its own default (`launchModel`).
+// route as its model, `route:<id>`. Each turn it starts asks the plugin's
+// router which of the harness's own models and effort levels to run it on:
+// the harness calls `Delivery.route` where a delivery starts a turn, and runs
+// that turn on its answer as on a per-message pick. A message that steers a
+// running turn asks nothing and keeps that turn's choice, so the session's
+// prompt cache stays warm. No harness ever runs a route id, and each launches
+// its process on its own default (`launchModel`).
 //
 // - `routes(harness)` lists a harness's routes, the one new agents start on
 //   (`initial`), the one agents on Automatic use (`automatic`), and whether
@@ -274,8 +274,6 @@ export type RoutedPick = TurnPick &
       rationale?: string;
       /** The router didn't answer usably. */
       fallback?: true;
-      /** A steer kept the running turn's pick. */
-      kept?: true;
     }>;
   }>;
 
@@ -295,38 +293,54 @@ function listed(
   };
 }
 
-/** The pick a turn runs on: `pick`, the owner's for this message, unless
- * the agent runs on a route (saved, picked for this message, or Automatic's),
- * in which case the route's router chooses, or the running turn's pick is
- * kept when the turn will steer (`busy`). */
-export async function routeTurn(
+/** The route a turn runs on, if any: one picked for its message, or, without
+ * an explicit model pick, Automatic's or the saved one (`current`). */
+export function turnRoute(
   input: Readonly<{
     harness: string;
     pick: TurnPick;
     /** The model the agent runs on without a pick (`Models.current`). */
     current: string;
     automatic: boolean;
+  }>,
+) {
+  const { pick } = input;
+  if (pick.model && !routeOf(pick.model)) return undefined;
+  return (
+    routeOf(pick.model) ??
+    (input.automatic
+      ? routesFor(input.harness).automatic
+      : routeOf(input.current))
+  );
+}
+
+/** The pick a turn starts with: `pick`, the owner's for this message, unless
+ * the agent runs on a route (`turnRoute`), whose router chooses. */
+export async function routeTurn(
+  input: Readonly<{
+    harness: string;
+    pick: TurnPick;
+    current: string;
+    automatic: boolean;
     models: readonly Model[];
-    /** The conversation has a turn running, which this one steers into. */
-    busy: boolean;
-    /** The pick of the conversation's latest routed turn. */
-    last?: TurnPick | undefined;
-    request: Omit<ModelRouteRequest, "route" | "models" | "harness" | "signal">;
+    request: Omit<
+      ModelRouteRequest,
+      "route" | "models" | "harness" | "signal" | "history"
+    > & {
+      /** Read with the selection's own signal, which ends with it. */
+      history(signal: AbortSignal): Promise<readonly RouteMessage[]>;
+    };
     signal: AbortSignal;
   }>,
 ): Promise<RoutedPick> {
   const { harness, pick } = input;
-  if (pick.model && !routeOf(pick.model)) return pick;
-  const { routes, owners } = resolved(harness);
-  const id =
-    routeOf(pick.model) ??
-    (input.automatic ? routes.automatic : routeOf(input.current));
+  const id = turnRoute(input);
   if (!id) return pick;
+  const { routes, owners } = resolved(harness);
   const route = routes.routes.find((item) => item.id === id);
   const router = owners.get(id);
   // The route's plugin is off, or no longer offers it.
   if (!route || !router) return {};
-  if (input.busy) return { ...input.last, routed: { route, kept: true } };
   const own = input.models.filter((model) => !routeOf(model.id));
   const late = new AbortController();
   const timer = setTimeout(
@@ -334,6 +348,7 @@ export async function routeTurn(
     ROUTE_TIMEOUT_MS,
   );
   const signal = AbortSignal.any([input.signal, late.signal]);
+  let history: Promise<readonly RouteMessage[]> | undefined;
   let choice: ModelRouteChoice | undefined;
   try {
     // A router that ignores the signal still can't hold the turn past it.
@@ -344,7 +359,14 @@ export async function routeTurn(
           once: true,
         });
         router
-          .select({ ...input.request, harness, route: id, models: own, signal })
+          .select({
+            ...input.request,
+            history: () => (history ??= input.request.history(signal)),
+            harness,
+            route: id,
+            models: own,
+            signal,
+          })
           .then(resolve, reject);
       },
     );
@@ -353,6 +375,8 @@ export async function routeTurn(
     console.warn(`Model route ${id} could not choose a model`, error);
   } finally {
     clearTimeout(timer);
+    // Ends any read of the thread the router left running.
+    if (!late.signal.aborted) late.abort(new Error("The model route chose"));
   }
   input.signal.throwIfAborted();
   const chosen = listed(own, choice);

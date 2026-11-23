@@ -620,6 +620,7 @@ export class GooseRuntime {
       team,
       model,
       effort,
+      route: chooseModel,
       synced,
       workingUntil,
       current,
@@ -880,13 +881,20 @@ export class GooseRuntime {
           ...(model ? { model } : {}),
           ...(effort ? { effort } : {}),
           // A pick runs on its own level; a synced one is checked.
-          ...(synced?.effort && !model && !effort
+          ...(synced?.effort && !model && !effort && !chooseModel
             ? { kept: synced.effort }
             : {}),
         };
         if (gateway) {
+          // A forwarded turn always starts one: its route chooses now.
+          const chosen = chooseModel ? await chooseModel() : {};
+          if (!chosen) {
+            delivered = Promise.resolve({ ok: true, undelivered: true });
+            return;
+          }
           delivered = this.forwarded(entry, agent.key, key, gateway, {
             ...options,
+            ...chosen,
             activity: { ...activity, current: valid },
             prompt: async (fresh) => {
               if (!valid()) return undefined;
@@ -910,6 +918,7 @@ export class GooseRuntime {
         }
         delivered = entry.sessions.deliver(key, text, shown, {
           ...options,
+          ...(chooseModel ? { route: chooseModel } : {}),
           ...activity,
           ...(wake ? { current } : {}),
           // Built again as it is handed over: a wake, to read what is
