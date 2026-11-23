@@ -181,14 +181,15 @@ function refusedAsExistingReaction(event: EventData, error: unknown) {
     (error.reason ?? error.message).startsWith("duplicate:")
   );
 }
-/** Journals written before these refusals were retired kept them as failed,
- * with the relay's reason as their stored error. */
+/** Journals written before these refusals were retired kept them with the
+ * relay's reason as their stored error: failed after a first attempt, or
+ * still unknown after a retry of an unconfirmed send was refused. */
 function storedAsExistingReaction(item: OutgoingEvent) {
+  if (item.event.kind !== 7 || item.recovery) return false;
+  const error = item.error ?? "";
+  if (item.delivery === "failed") return error.startsWith("duplicate:");
   return (
-    item.event.kind === 7 &&
-    !item.recovery &&
-    item.delivery === "failed" &&
-    /^(Retry blocked: )?duplicate:/.test(item.error ?? "")
+    item.delivery === "unknown" && error.startsWith("Retry blocked: duplicate:")
   );
 }
 

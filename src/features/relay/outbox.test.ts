@@ -298,7 +298,7 @@ it("drops duplicate reaction refusals that an earlier version saved as failed, a
     {
       event: retriedDuplicate,
       signed: retriedDuplicate,
-      delivery: "failed",
+      delivery: "unknown",
       error: "Retry blocked: duplicate: reaction already exists",
     },
     {
