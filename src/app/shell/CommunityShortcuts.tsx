@@ -42,7 +42,8 @@ export function CommunityShortcuts({
     const removes = [
       ...Array.from({ length: 9 }, (_, index) =>
         shortcuts.registerHost({
-          id: `switch-community-${index + 1}`,
+          // New ids, so rebinds saved for the old numbering do not carry over.
+          id: `community-${index + 1}`,
           title: `Switch to community ${index + 1} in the switcher`,
           binding: { key: String(index + 1), mod: true },
           order: ORDER + index / 100,
