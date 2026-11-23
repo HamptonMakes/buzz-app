@@ -182,8 +182,9 @@ one only if you trust its author with your account and your computer.
 ## Docs
 
 Docs is a bundled plugin for live Markdown documents shared with people and
-agents. Open Docs from the dock. Auto-save waits until you pause typing. You can
-keep editing while a save is in progress. If a save fails, use Retry save.
+agents. It’s off by default. Enable **Docs** in **Settings → Plugins → Manage
+plugins**, then open it from the dock. Auto-save waits until you pause typing.
+You can keep editing while a save is in progress. If a save fails, use Retry save.
 Unsaved drafts survive browsing within the connected session and are cleared
 when you restart the app.
 

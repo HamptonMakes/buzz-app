@@ -634,8 +634,7 @@ fn bundled_manifests_for(gateway: Option<&gateway::Native>) -> Vec<Manifest> {
 fn enabled_by_default(id: &str) -> bool {
     matches!(
         id,
-        "com.squareup.pages"
-            | "buzz.channels"
+        "buzz.channels"
             | "buzz.feedback"
             | "buzz.diffs"
             | "buzz.mermaid"

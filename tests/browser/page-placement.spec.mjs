@@ -38,7 +38,6 @@ test("shared navigation preserves drafts and history across Solo and header page
     "Messages",
     "Reminders",
     "Agents",
-    "Docs",
     "Workflows",
   ]);
   const sidebar = page.getByRole("complementary", {

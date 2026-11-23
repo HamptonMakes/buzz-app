@@ -183,7 +183,7 @@ export const bundledPlugins: readonly BundledPlugin[] = [
   {
     manifest: { ...pagesManifest, apiVersion: 1 },
     module: pages,
-    enabledByDefault: true,
+    enabledByDefault: false,
   },
   {
     manifest: { ...githubManifest, apiVersion: 1 },

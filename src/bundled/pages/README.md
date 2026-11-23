@@ -1,7 +1,7 @@
 # Docs
 
 Create live Markdown documents with people and agents. Docs is bundled with Buzz
-and can be disabled in Settings → Plugins.
+and off by default. Enable it in **Settings → Plugins → Manage plugins**.
 
 ## Getting started
 
