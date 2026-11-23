@@ -59,13 +59,13 @@ test("the app runtime exposes ready bundled pages and removes them on disable", 
     );
     assert.notEqual(services.accountActions.snapshot()[0], firstFeedback);
     await settle();
-    const docsId = "com.squareup.pages";
+    const docsId = "com.squareup.docs";
     const docsPage = () =>
       services.pages.snapshot().find((page) => page.pluginId === docsId);
     const docsPanel = () =>
       services.panels.snapshot().find((panel) => panel.pluginId === docsId);
     const docsTools = () =>
-      services.agents.tools().filter(({ name }) => name.startsWith("page_"));
+      services.agents.tools().filter(({ name }) => name.startsWith("doc_"));
     assert.equal(docsPage(), undefined);
     assert.equal(docsPanel(), undefined);
     assert.deepEqual(docsTools(), []);
@@ -78,9 +78,9 @@ test("the app runtime exposes ready bundled pages and removes them on disable", 
       renderToStaticMarkup(createElement(documents.component)),
       /Connect to your community to open docs/,
     );
-    assert.equal(docsPanel()?.key, "com.squareup.pages/page");
+    assert.equal(docsPanel()?.key, "com.squareup.docs/doc");
     assert.equal(docsPanel()?.addressable, true);
-    assert.ok(docsTools().some(({ name }) => name === "page_get"));
+    assert.ok(docsTools().some(({ name }) => name === "doc_get"));
     await services.plugins.change("disable", docsId);
     assert.equal(docsPage(), undefined);
     assert.equal(docsPanel(), undefined);
@@ -109,7 +109,7 @@ test("the app runtime exposes ready bundled pages and removes them on disable", 
       assert.equal(
         plugin.enabledByDefault,
         ![
-          "com.squareup.pages",
+          "com.squareup.docs",
           "buzz.pi",
           "buzz.usage",
           "buzz.relay-notes",

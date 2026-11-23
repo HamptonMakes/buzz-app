@@ -33,7 +33,7 @@ test("cold app startup pins fresh defaults and activates opt-in Bestie setup", a
     "buzz.reminders": false,
     "buzz.workflows": false,
     "buzz.bestie": true,
-    "com.squareup.pages": false,
+    "com.squareup.docs": false,
   });
   // Add the account only after first-run defaults are durable. This exercises
   // real plugin activation after community setup without pre-seeding preferences.
@@ -52,7 +52,7 @@ test("cold app startup pins fresh defaults and activates opt-in Bestie setup", a
     "buzz.reminders": false,
     "buzz.workflows": false,
     "buzz.bestie": true,
-    "com.squareup.pages": false,
+    "com.squareup.docs": false,
   });
   await openPage(fresh, "Messages");
   const destination = fresh
@@ -114,7 +114,7 @@ test("an untouched client profile keeps its defaults and can opt in to Docs", as
       "buzz.reminders": true,
       "buzz.workflows": true,
       "buzz.bestie": false,
-      "com.squareup.pages": false,
+      "com.squareup.docs": false,
     });
     await closeSettings(upgraded);
   }

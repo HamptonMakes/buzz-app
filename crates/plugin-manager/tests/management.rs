@@ -1373,7 +1373,7 @@ fn bundled_defaults_preserve_saved_choices_and_only_channels_is_required() {
         let id = plugin.manifest.id.as_str();
         let default = !matches!(
             id,
-            "com.squareup.pages"
+            "com.squareup.docs"
                 | "buzz.pi"
                 | "buzz.usage"
                 | "buzz.relay-notes"
@@ -1411,7 +1411,7 @@ fn bundled_defaults_preserve_saved_choices_and_only_channels_is_required() {
     }
     // Saved choices override current defaults even across process restarts.
     for id in [
-        "com.squareup.pages",
+        "com.squareup.docs",
         "buzz.bestie",
         "buzz.reminders",
         "buzz.workflows",
@@ -1454,7 +1454,7 @@ fn bundled_defaults_are_pinned_for_fresh_and_untouched_existing_profiles() {
                 ("buzz.reminders", existing),
                 ("buzz.workflows", existing),
                 ("buzz.bestie", !existing),
-                ("com.squareup.pages", false),
+                ("com.squareup.docs", false),
             ] {
                 assert_eq!(
                     catalog
@@ -1488,14 +1488,14 @@ fn bundled_defaults_are_pinned_for_fresh_and_untouched_existing_profiles() {
                 .unwrap()
                 .enabled
         );
-        manager.change("enable", "com.squareup.pages").unwrap();
+        manager.change("enable", "com.squareup.docs").unwrap();
         manager.recover().unwrap();
         let reopened = Manager::open(Some(home.path().into()), "test", false).unwrap();
         for (id, expected) in [
             ("buzz.reminders", false),
             ("buzz.workflows", false),
             ("buzz.bestie", true),
-            ("com.squareup.pages", false),
+            ("com.squareup.docs", false),
         ] {
             assert_eq!(
                 reopened

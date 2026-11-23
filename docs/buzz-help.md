@@ -214,7 +214,7 @@ Doc references open beside the conversation, with normal Back/Forward and tab
 close behavior. Choose **Open in Docs** from the tab’s context menu or Doc
 actions to see the same doc in the main Docs view. Tables display as grids in
 Viewing and formatted Editing. Use Markdown source to change table cells.
-Agents can call `page_help`, create and verify a Doc,
+Agents can call `doc_help`, create and verify a Doc,
 post its returned reference, then update the same document on follow-ups. The execution
 host must have Docs enabled. Saving requires relay support for NIP-AR doc
 records. Docs does not migrate Canvas or the separate Shared notes format.
