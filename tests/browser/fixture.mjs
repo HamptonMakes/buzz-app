@@ -15,7 +15,10 @@ import { bytesToHex, hexToBytes } from "nostr-tools/utils";
 import { platform, arch } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { relayBrokerPlugin } from "../../browser-host/relay-broker.mjs";
+import {
+  relayBrokerPlugin,
+  verifySignatureClaims,
+} from "../../browser-host/relay-broker.mjs";
 import { policyRelay } from "./policy-relay.mjs";
 import { buildApp } from "./build.mjs";
 import { fixtureBody } from "./fixture-body.mjs";
@@ -2391,6 +2394,14 @@ export const test = base.extend({
         const { body } = parsed;
         if (route === "identity") return send(response, { viewer });
         if (route === "register") return send(response, {});
+        if (route === "verify-signatures" && request.method === "POST")
+          return Array.isArray(body?.claims)
+            ? send(response, await verifySignatureClaims(body.claims))
+            : send(
+                response,
+                { error: "Invalid signature verification request" },
+                400,
+              );
         if (!["primary", "secondary"].includes(community))
           throw new Error(`Unexpected community: ${request.url}`);
         if (route === "gif-info" && request.method === "GET")

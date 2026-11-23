@@ -399,8 +399,10 @@ reached the client fails.
 | `heapGrowthKBPerMessage` | After-GC `JSHeapUsedSize` growth divided by messages sent |
 | `nodesDelta`, `listenersDelta` | After-GC change in DOM nodes and JS event listeners |
 
-The browser build verifies signatures in JavaScript, which the desktop app does
-natively, so per-message script time is higher here than in the app. The fixture
+The browser build offloads BIP-340 signature verification to the local Node
+relay broker (`/api/relay/verify-signatures`), mirroring how the desktop app
+offloads verification to Rust (`relay_verify_signatures`), while JavaScript
+still validates wire envelopes and hashes event IDs. The fixture
 sends chat messages only; agent activity, presence and typing traffic are not
 modeled. Heap growth over 30 seconds does not show whether the heap later levels
 off.

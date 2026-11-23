@@ -56,7 +56,9 @@ export function hasEventProof(event: EventData): boolean {
 }
 
 export function eventDto(value: unknown): RelayEvent {
-  return checkedEvent(value, verifyEvent);
+  const owned = wireEvent(value);
+  if (!verifyEvent(owned)) throw invalidEvent();
+  return admit(owned);
 }
 
 /** A whole query response; one bad event rejects it, as relay reads do. */
@@ -75,11 +77,11 @@ export type SignatureVerifier = (
  * across its reconnects), not an event/result cache. Only a matching content
  * hash AND exact signature can reuse a successful verification. Retains no
  * payload, authorization, freshness or caller-supplied proof symbols.
- * With `signatures`, `native.prepare` does the synchronous checks per event
- * and `native.settle` sends the memo misses to it in one call. */
+ * `prepare` does the synchronous wire/hash checks per event and `settle` sends
+ * the memo misses to the host's `SignatureVerifier` in one call. */
 export function createEventVerifier(
+  signatures: SignatureVerifier,
   entries = 8192,
-  signatures?: SignatureVerifier,
 ): EventVerifier {
   // Idle sessions periodically re-read the same events. An LRU smaller than that
   // working set misses on every in-order re-read, so keep it well above it.
@@ -90,17 +92,6 @@ export function createEventVerifier(
     if (event.kind < 20000 || event.kind >= 30000)
       proofs.set(event.id, event.sig, 192); // fixed ASCII id (64) + signature (128)
   };
-  const verify = (value: unknown): RelayEvent =>
-    checkedEvent(value, (event): event is VerifiedEvent => {
-      if (proven(event) && getEventHash(event) === event.id) {
-        event[verifiedSymbol] = true;
-        return true;
-      }
-      if (!verifyEvent(event)) return false;
-      remember(event);
-      return true;
-    });
-  if (!signatures) return verify;
   const prepare = (value: unknown): PreparedEvent => {
     const event = wireEvent(value);
     if (getEventHash(event) !== event.id) throw invalidEvent();
@@ -126,35 +117,22 @@ export function createEventVerifier(
       return admit(event as VerifiedEvent);
     });
   };
-  return Object.assign(verify, { native: { prepare, settle } });
+  return { prepare, settle };
 }
 
 declare const prepared: unique symbol;
 /** A well-formed wire copy whose id matches its hash; its signature is unchecked.
- * Only `native.prepare` produces one. */
+ * Only `EventVerifier.prepare` produces one. */
 export type PreparedEvent = Event & { readonly [prepared]: true };
 
-export type EventVerifier = ((value: unknown) => RelayEvent) & {
-  native?: {
-    prepare(value: unknown): PreparedEvent;
-    /** One result per input; invalid signatures have no proof. Host failures reject. */
-    settle(
-      events: readonly PreparedEvent[],
-    ): Promise<(RelayEvent | undefined)[]>;
-  };
-};
+export type EventVerifier = Readonly<{
+  prepare(value: unknown): PreparedEvent;
+  /** One result per input; invalid signatures have no proof. Host failures reject. */
+  settle(events: readonly PreparedEvent[]): Promise<(RelayEvent | undefined)[]>;
+}>;
 
 const invalidEvent = () =>
   new Error("Relay supplied a malformed or invalidly signed event");
-
-function checkedEvent(
-  value: unknown,
-  verify: (event: Event) => event is VerifiedEvent,
-): RelayEvent {
-  const owned = wireEvent(value);
-  if (!verify(owned)) throw invalidEvent();
-  return admit(owned);
-}
 
 /** The wire fields of a well-formed event, copied and not yet verified. */
 function wireEvent(value: unknown): Event {

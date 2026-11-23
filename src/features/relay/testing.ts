@@ -6,7 +6,7 @@ import {
   getPublicKey,
   type EventTemplate,
 } from "nostr-tools";
-import type { ReadFilter, RelayEvent } from "./events";
+import type { ReadFilter, RelayEvent, SignatureVerifier } from "./events";
 import { PublishRejected } from "./outbox";
 import { authTagOwner } from "../agents/owner-attestation";
 import type { ReadTransport, Signer } from "./transport";
@@ -54,6 +54,9 @@ export const nativeSignatureChecks = (args: unknown) =>
   ).claims.map(({ id, pubkey, sig }) =>
     schnorr.verify(hexToBytes(sig), hexToBytes(id), hexToBytes(pubkey)),
   );
+/** Real BIP-340 `SignatureVerifier` for unit tests and mocked hosts. */
+export const verifyTestSignatures: SignatureVerifier = async (claims) =>
+  nativeSignatureChecks({ claims });
 /** Production-shaped host signer: the host authenticates and sends the exact
  * bytes, as the native adapter does. The default host forwards to the test's
  * stubbed `fetch`; credentials never reach JavaScript. */
@@ -61,6 +64,7 @@ export function hostSigner(
   key: Key = keypair(),
   request: Signer["request"] = (url, body, signal) =>
     fetch(url, { method: "POST", body, signal: signal ?? null }),
+  verifySignatures: SignatureVerifier = verifyTestSignatures,
 ) {
   return {
     key,
@@ -68,6 +72,7 @@ export function hostSigner(
     signEvent: async (template: Parameters<typeof signed>[1]) =>
       signed(key, template),
     request,
+    verifySignatures,
   };
 }
 export function message(

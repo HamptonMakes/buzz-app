@@ -181,8 +181,78 @@ function validProfilePicture(value) {
 const MAX_FILTERS = 4,
   MAX_LIMIT = 500,
   MAX_INFLIGHT = 6,
+  MAX_VERIFY_CLAIMS = 4096,
+  MAX_VERIFY_BYTES = 2 * 1024 * 1024,
+  VERIFY_YIELD_CHUNK = 64,
   UPSTREAM_TIMEOUT_MS = 20000,
   KEEPALIVE_MS = 60000;
+
+/** Mirror `relay_verify_signatures` / `signs()` in `src-tauri/src/relay.rs`. */
+function verifySignatureClaim(claim) {
+  if (
+    !claim ||
+    typeof claim !== "object" ||
+    typeof claim.id !== "string" ||
+    typeof claim.pubkey !== "string" ||
+    typeof claim.sig !== "string" ||
+    !/^[0-9a-f]{64}$/i.test(claim.id) ||
+    !/^[0-9a-f]{64}$/i.test(claim.pubkey) ||
+    !/^[0-9a-f]{128}$/i.test(claim.sig)
+  )
+    return false;
+  try {
+    return schnorr.verify(
+      Buffer.from(claim.sig, "hex"),
+      Buffer.from(claim.id, "hex"),
+      Buffer.from(claim.pubkey, "hex"),
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function verifySignatureClaims(claims, signal) {
+  signal?.throwIfAborted();
+  const results = new Array(claims.length);
+  for (let i = 0; i < claims.length; i++) {
+    if (i > 0 && i % VERIFY_YIELD_CHUNK === 0) {
+      await new Promise((resolve) => setImmediate(resolve));
+      signal?.throwIfAborted();
+    }
+    results[i] = verifySignatureClaim(claims[i]);
+  }
+  return results;
+}
+
+async function handleVerifySignatures(req, res, cancel) {
+  let raw = "";
+  let bytes = 0;
+  req.setEncoding("utf8");
+  for await (const part of req) {
+    bytes += Buffer.byteLength(part);
+    if (bytes > MAX_VERIFY_BYTES)
+      return json(res, 413, {
+        error: "Signature verification request is too large",
+      });
+    raw += part;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return json(res, 400, { error: "Invalid signature verification request" });
+  }
+  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.claims))
+    return json(res, 400, { error: "Invalid signature verification request" });
+  if (parsed.claims.length > MAX_VERIFY_CLAIMS)
+    return json(res, 413, {
+      error: "Signature verification request has too many claims",
+    });
+  cancel.signal.throwIfAborted();
+  const checked = await verifySignatureClaims(parsed.claims, cancel.signal);
+  cancel.signal.throwIfAborted();
+  return json(res, 200, checked);
+}
 
 /** Warm, long-lived upstream connections. Node's default pool drops idle sockets after
  * four seconds, so every send after a short pause paid DNS + TCP + TLS again; a cold
@@ -1265,6 +1335,11 @@ export function relayBrokerPlugin({
               });
             }
           }
+          if (
+            url.pathname === "/api/relay/verify-signatures" &&
+            req.method === "POST"
+          )
+            return await handleVerifySignatures(req, res, cancel);
           const parts = url.pathname.split("/").filter(Boolean);
           const scoped = parts.length === 4;
           let id;
@@ -2284,6 +2359,7 @@ export function relayBrokerPlugin({
                     interestRevision: stream.interestRevision,
                   }),
               },
+              verifySignatureClaims,
               socketFactory,
               principal.live,
               undefined,

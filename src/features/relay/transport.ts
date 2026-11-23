@@ -216,7 +216,7 @@ export interface ReadTransport {
   ): Promise<string | undefined>;
   readonly profiling?: RelayProfiler;
   /** Verifies events read back from device storage as a relay read does, with
-   * the host's native batch check; only present with one. Rejects on any bad record or host failure. */
+   * the host's batch check. Rejects on any bad record or host failure. */
   verifyStored?(values: readonly unknown[]): Promise<RelayEvent[]>;
   /** Verified incoming traffic. The session owns this subscription and fences late delivery. */
   subscribe?(callbacks: LiveCallbacks): LiveSubscription;
@@ -298,8 +298,8 @@ export interface Signer {
   /** Native hosts serve relay `/media/` URLs through an authenticated proxy,
    * and save images by the channel that shows them. */
   media?(url: string, channel?: string): string;
-  /** Native hosts check incoming signatures with libsecp256k1, off the main thread. */
-  verifySignatures?: SignatureVerifier;
+  /** Hosts check incoming BIP-340 signatures off the main thread. */
+  verifySignatures: SignatureVerifier;
 }
 
 /** The host's explicit HTTP base wins; otherwise translate the ws(s) relay URL's scheme. */
@@ -328,29 +328,19 @@ export async function parseEvents(
       "invalid-response",
       "Relay response is not an event array",
     );
-  const { native } = verify;
-  // Signature checks are CPU work too. Yield between small batches so speculative
-  // head/profile responses cannot monopolize input and foreground rendering.
-  // A native host checks signatures; JS still validates and hashes each event.
-  const checkChunks = async <T>(check: (value: unknown) => T) => {
-    const checked: T[] = [];
-    for (let index = 0; index < raw.length; index += 12) {
-      if (signal?.aborted)
-        throw new DOMException("Read cancelled", "AbortError");
-      const started = performance.now();
-      const batch = raw.slice(index, index + 12).map(check);
-      clientMetrics.cpu(
-        "verify.read",
-        performance.now() - started,
-        batch.length,
-      );
-      checked.push(...batch);
-      if (index + 12 < raw.length) await yieldToHost();
-    }
-    return checked;
-  };
-  if (!native) return checkChunks(verify);
-  const events = await native.settle(await checkChunks(native.prepare));
+  // Hashing and shape validation are CPU work too. Yield between small batches so
+  // speculative head/profile responses cannot monopolize input and rendering; the
+  // host verifies uncached BIP-340 signatures off the main thread in `settle`.
+  const prepared = [];
+  for (let index = 0; index < raw.length; index += 12) {
+    if (signal?.aborted) throw new DOMException("Read cancelled", "AbortError");
+    const started = performance.now();
+    const batch = raw.slice(index, index + 12).map(verify.prepare);
+    clientMetrics.cpu("verify.read", performance.now() - started, batch.length);
+    prepared.push(...batch);
+    if (index + 12 < raw.length) await yieldToHost();
+  }
+  const events = await verify.settle(prepared);
   if (signal?.aborted) throw new DOMException("Read cancelled", "AbortError");
   if (!events.every((event) => event !== undefined))
     throw new ReadError(
@@ -429,12 +419,13 @@ async function parsePresence(
   raw: unknown,
   authors: readonly string[],
   relay: string,
+  verify: EventVerifier,
   signal: AbortSignal,
 ) {
   if (!Array.isArray(raw) || raw.length > authors.length)
     throw new Error("Invalid presence snapshot");
   const values = new Map<string, "online" | "away" | "offline" | "unknown">();
-  for (const event of await parseEvents(raw, eventDto, signal)) {
+  for (const event of await parseEvents(raw, verify, signal)) {
     const subjects = event.tags.filter(([tag]) => tag === "p");
     const subject = subjects[0]?.[1];
     let status: unknown = event.content;
@@ -525,6 +516,48 @@ function brokerRefusals() {
   };
 }
 
+const BROKER_VERIFY_BATCH = 1024;
+function brokerVerifySignatures(base: string): SignatureVerifier {
+  return async (claims) => {
+    if (!claims.length) return [];
+    const results: boolean[] = [];
+    for (
+      let offset = 0;
+      offset < claims.length;
+      offset += BROKER_VERIFY_BATCH
+    ) {
+      const slice = claims.slice(offset, offset + BROKER_VERIFY_BATCH);
+      const response = await fetch(`${base}/api/relay/verify-signatures`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claims: slice }),
+      });
+      if (!response.ok) {
+        const failure = await readApiFailure(response);
+        throw new ReadError(
+          failure.denied ? "denied" : "unavailable",
+          failure.error,
+          response.status,
+          failure.retryAfterMs,
+        );
+      }
+      const checked: unknown = await response.json();
+      if (
+        !Array.isArray(checked) ||
+        checked.length !== slice.length ||
+        checked.some((entry) => typeof entry !== "boolean")
+      )
+        throw new ReadError(
+          "invalid-response",
+          "Relay broker signature verification is malformed",
+        );
+      results.push(...checked);
+    }
+    return results;
+  };
+}
+
 /** Dev-only: a same-origin broker (see browser-host/relay-broker.mjs) holds the key and signs reads. */
 export async function connectBrokerTransport(
   base = "",
@@ -536,7 +569,8 @@ export async function connectBrokerTransport(
   if (community) await registerBrokerCommunity(community, signal, base);
   const endpoint = `${base}/api/relay${community ? `/${encodeURIComponent(community)}` : ""}`;
   const profiling = createRelayProfiler();
-  const verify = createEventVerifier();
+  const verifySignatures = brokerVerifySignatures(base);
+  const verify = createEventVerifier(verifySignatures);
   const response = await fetch(`${endpoint}/session`, {
     credentials: "same-origin",
     signal: signal ?? null,
@@ -661,6 +695,7 @@ export async function connectBrokerTransport(
   });
   return {
     profiling,
+    verifyStored: (values) => parseEvents(values, verify),
     observeRefusal,
     ...(session.attachmentUploads === true && session.relayUrl
       ? { uploadAttachment: brokerUpload(endpoint, session.relayUrl, fetch) }
@@ -702,6 +737,7 @@ export async function connectBrokerTransport(
               JSON.parse(await presenceText(result)),
               authors,
               session.relayAuthor as string,
+              verify,
               bounded,
             );
           },
@@ -717,6 +753,7 @@ export async function connectBrokerTransport(
                 ...callbacks,
                 presence: presence.receive,
               }),
+              verifySignatures,
             );
             presence.attach(traffic);
             return { ...traffic, publishTyping: publish };
@@ -1523,14 +1560,12 @@ export async function connectSignedTransport(
   httpOrigin = relayOrigin(httpOrigin);
   const principal = () => signedAdmissions(httpOrigin, viewer);
   const profiling = createRelayProfiler();
-  const verify = createEventVerifier(undefined, signer.verifySignatures);
+  const verify = createEventVerifier(signer.verifySignatures);
   const presence = presenceObservation();
   const upload = signer.upload?.bind(signer);
   return {
     profiling,
-    ...(verify.native
-      ? { verifyStored: (values) => parseEvents(values, verify) }
-      : {}),
+    verifyStored: (values) => parseEvents(values, verify),
     ...(upload ? { uploadAttachment: hostUpload(upload, httpOrigin) } : {}),
     observePresence: presence.observe,
     async presenceSnapshot(authors, signal) {
@@ -1567,6 +1602,7 @@ export async function connectSignedTransport(
           JSON.parse(await presenceText(response)),
           authors,
           relayAuthor,
+          verify,
           bounded,
         );
       } finally {
@@ -1586,13 +1622,9 @@ export async function connectSignedTransport(
             ...callbacks,
             presence: presence.receive,
           }),
+          signer.verifySignatures,
           socketFactory,
           owner.live,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          signer.verifySignatures,
         );
       } catch (error) {
         owner.streams--;
