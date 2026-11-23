@@ -221,7 +221,11 @@ export function SidebarCardResize({
         <EducationHint
           seen={seen}
           seenKey={gripTipKey}
-          content="Drag to resize · Double-click to expand or collapse"
+          content={
+            size === ALL
+              ? "Drag to resize · Double-click to collapse"
+              : "Drag to resize · Double-click to expand"
+          }
         >
           <hr
             ref={handle}
