@@ -124,9 +124,19 @@ export function NoteDocument({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [composing, setComposing] = useState(false);
-  const saveRequest = useRef<AbortController | null>(null);
+  const saveRequest = useRef<Promise<Note> | null>(null);
   const refreshAfterSave = useRef(false);
-  useEffect(() => () => saveRequest.current?.abort(), []);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [awaitingReceipt, setAwaitingReceipt] = useState(
+    !!cachedDraft?.awaitingReceipt,
+  );
+  const initialSettlement = useRef(cachedDraft?.settlement);
   const actionsTrigger = useRef<HTMLButtonElement>(null);
   const [historySelection, setHistorySelection] = useState<{
     revision: string;
@@ -148,7 +158,8 @@ export function NoteDocument({
   const [restoreFrom, setRestoreFrom] = useState<Note | undefined>(
     cachedDraft?.restoreFrom,
   );
-  const dirty = !!note && hasEdits(note, { title, markdown });
+  const dirty =
+    !!note && (awaitingReceipt || hasEdits(note, { title, markdown }));
   const wantsEditing = view ? (view.edit ?? true) : localEditing;
   const editing =
     wantsEditing && ((canEdit && !note?.deleted) || dirty || !!restoreFrom);
@@ -235,6 +246,7 @@ export function NoteDocument({
     canEdit,
     conflict,
     unavailable,
+    awaitingReceipt,
   });
   latest.current = {
     note,
@@ -245,6 +257,7 @@ export function NoteDocument({
     canEdit,
     conflict,
     unavailable,
+    awaitingReceipt,
   };
   const callbacks = useRef({ onChange, onDirty, onUnavailable });
   callbacks.current = { onChange, onDirty, onUnavailable };
@@ -257,9 +270,23 @@ export function NoteDocument({
         title,
         markdown,
         ...(restoreFrom ? { restoreFrom } : {}),
+        ...(awaitingReceipt ? { awaitingReceipt: true } : {}),
+        ...(saving && saveRequest.current
+          ? { settlement: saveRequest.current }
+          : {}),
       });
     else workspace.drafts.delete(key);
-  }, [workspace, address, note, dirty, title, markdown, restoreFrom]);
+  }, [
+    workspace,
+    address,
+    note,
+    dirty,
+    title,
+    markdown,
+    restoreFrom,
+    awaitingReceipt,
+    saving,
+  ]);
   useEffect(() => {
     callbacks.current.onDirty(dirty);
   }, [dirty]);
@@ -284,6 +311,7 @@ export function NoteDocument({
     setMarkdown(next.markdown);
     setConflict(undefined);
     setRestoreFrom(undefined);
+    setAwaitingReceipt(false);
     setSaveError("");
     callbacks.current.onChange(next);
   }, []);
@@ -308,6 +336,12 @@ export function NoteDocument({
       setPending(true);
       setError("");
       try {
+        // A save started before closing the tab can still be in flight when it reopens.
+        if (initialSettlement.current) {
+          await initialSettlement.current.catch(() => {});
+          initialSettlement.current = undefined;
+        }
+        signal?.throwIfAborted();
         const current = await workspace.open(address, signal);
         const roles = await workspace.authority(current.channel, signal);
         signal?.throwIfAborted();
@@ -322,10 +356,16 @@ export function NoteDocument({
         if (previous.note?.revision !== current.revision) {
           if (
             previous.note &&
-            (hasEdits(previous.note, previous) || previous.restoreFrom)
+            (previous.awaitingReceipt ||
+              hasEdits(previous.note, previous) ||
+              previous.restoreFrom) &&
+            (current.deleted || hasEdits(current, previous))
           )
             setConflict(current);
           else adopt(current);
+        } else if (previous.awaitingReceipt) {
+          setAwaitingReceipt(false);
+          if (!hasEdits(current, previous)) setSaveError("");
         }
         callbacks.current.onChange(current);
       } catch (error) {
@@ -456,26 +496,26 @@ export function NoteDocument({
         (base.deleted && !current.restoreFrom && !revision)
       )
         return;
-      const request = new AbortController();
-      saveRequest.current = request;
       const restoration = base.deleted
         ? (revision ?? current.restoreFrom)
         : undefined;
+      const request = workspace.save(
+        base,
+        {
+          title: revision?.title ?? current.title,
+          markdown: revision?.markdown ?? current.markdown,
+          ...(restoration ? { restoreFrom: restoration } : {}),
+        },
+        base.deleted ? "restore" : "update",
+      );
+      saveRequest.current = request;
       setSaving(true);
       if (revision) setBlocking(true);
+      else setAwaitingReceipt(true);
       setSaveError("");
       try {
-        const next = await workspace.save(
-          base,
-          {
-            title: revision?.title ?? current.title,
-            markdown: revision?.markdown ?? current.markdown,
-            ...(restoration ? { restoreFrom: restoration } : {}),
-          },
-          base.deleted ? "restore" : "update",
-          request.signal,
-        );
-        request.signal.throwIfAborted();
+        const next = await request;
+        if (!mounted.current) return;
         if (revision) {
           latest.current = {
             ...latest.current,
@@ -493,17 +533,21 @@ export function NoteDocument({
           ...latest.current,
           note: next,
           restoreFrom: undefined,
+          awaitingReceipt: false,
         };
         setNote(next);
         setRestoreFrom(undefined);
+        setAwaitingReceipt(false);
         callbacks.current.onChange(next);
       } catch (error) {
-        if (request.signal.aborted) return;
+        if (!mounted.current) return;
         if (error instanceof NoteConflict) setConflict(error.current);
+        else if (!revision && !hasEdits(base, latest.current))
+          refreshAfterSave.current = true;
         setSaveError(errorText(error));
       } finally {
         saveRequest.current = null;
-        if (!request.signal.aborted) {
+        if (mounted.current) {
           setSaving(false);
           if (revision) setBlocking(false);
           if (refreshAfterSave.current) {
@@ -927,6 +971,7 @@ export function NoteDocument({
                   disabled={conflict.deleted || !conflict.editable}
                   onClick={() => {
                     setNote(conflict);
+                    setAwaitingReceipt(false);
                     setConflict(undefined);
                     setError("");
                     setSaveError("");

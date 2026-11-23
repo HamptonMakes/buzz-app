@@ -387,6 +387,40 @@ it("preserves a concurrent draft and does not overwrite until the user resolves 
   expect(f.save.mock.calls[1]?.[0].title).toBe("Agent plan");
 });
 
+it("retains an undo made during a save when the tab closes and reopens", async () => {
+  const f = await fixture();
+  const receipt = gate();
+  const accepted = gate();
+  f.save.mockImplementationOnce(async (...args) => {
+    const next = await f.realSave(...args);
+    accepted.release();
+    await receipt.promise;
+    return next;
+  });
+  f.change("Published in flight");
+  await advance(1500);
+  await act(async () => accepted.promise);
+  f.change("Plan");
+  f.view.unmount();
+  render(
+    <NoteDocument address={f.note} workspace={f.workspace} onOpen={vi.fn()} />,
+  );
+  expect(screen.queryByRole("dialog")).toBeNull();
+  receipt.release();
+  await saved(f.save);
+  const dialog = screen.getByRole("dialog", {
+    name: "This doc has a newer revision",
+  });
+  expect(dialog).toHaveTextContent("Published in flight");
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Keep my draft" }),
+  );
+  expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Plan");
+  await advance(1500);
+  await saved(f.save);
+  expect((await f.workspace.open(f.note)).title).toBe("Plan");
+});
+
 it("cancels idle saves on unmount while retaining the workspace draft", async () => {
   const f = await fixture();
   f.change("Keep this draft");

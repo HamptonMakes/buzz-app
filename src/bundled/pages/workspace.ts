@@ -56,7 +56,14 @@ export function createNotesWorkspace(session: RelaySession) {
   // Unsaved work belongs to this identity/session, never a URL or relay record.
   const drafts = new Map<
     string,
-    { base: Note; title: string; markdown: string; restoreFrom?: Note }
+    {
+      base: Note;
+      title: string;
+      markdown: string;
+      restoreFrom?: Note;
+      awaitingReceipt?: true;
+      settlement?: Promise<Note>;
+    }
   >();
   const signal = (caller?: AbortSignal) =>
     AbortSignal.any([
