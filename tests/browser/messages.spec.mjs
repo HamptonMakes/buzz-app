@@ -75,6 +75,42 @@ function containedWithin(inner, outer) {
   );
 }
 
+// The real composer/outbox preserves the command while the thread reads it as narration.
+test("sending /me preserves the authored event and renders an action in its thread", async ({
+  page,
+}) => {
+  await withMessagesFixture(page, async () => {
+    const thread = page.getByRole("complementary", {
+      name: "Thread",
+      exact: true,
+    });
+    const draft = thread.getByRole("textbox", {
+      name: "Reply to thread",
+      exact: true,
+    });
+    await draft.fill("/me eats a drumstick");
+    await draft.press("Enter");
+    const action = thread
+      .locator("[data-message-id]")
+      .filter({ hasText: "eats a drumstick" });
+    await expect(
+      action.getByText("eats a drumstick", { exact: true }),
+    ).toBeVisible();
+    await expect(action).toContainText("Fixture Reader eats a drumstick");
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.messagesFixture.report.publications.filter(
+              (event) => event.content === "/me eats a drumstick",
+            ).length,
+        ),
+      )
+      .toBe(1);
+    await expect(draft).toHaveJSProperty("value", "");
+  });
+});
+
 test("media review stage contains portrait video and image media", async ({
   page,
 }) => {

@@ -4606,3 +4606,34 @@ html[data-keyboard-navigation]
   display: flex;
   margin-top: var(--space-1);
 }
+
+/* Narration stays on the conversation surface in either density/theme. */
+.message[data-narrated-action] > .messageBody {
+  max-width: none;
+}
+.message[data-narrated-action] .messageAvatar {
+  top: 0;
+  bottom: auto;
+  translate: none;
+}
+.actionPayload {
+  min-width: 0;
+  color: var(--text-standard);
+  overflow-wrap: anywhere;
+}
+.actionText {
+  @apply text-message;
+  font-style: italic;
+}
+.actionText > :is(.text, .plainText),
+.actionText > .text > p:first-child {
+  display: inline;
+  margin: 0;
+}
+.message .actionText > time {
+  @apply text-caption;
+  margin-inline-start: var(--space-2);
+  color: var(--text-subtle);
+  font-style: normal;
+  white-space: nowrap;
+}

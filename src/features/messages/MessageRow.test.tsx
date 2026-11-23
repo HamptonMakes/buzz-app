@@ -82,6 +82,70 @@ const row: ChannelMessage = {
   replyCount: 23,
 };
 
+it.each(["timeline", "thread"] as const)(
+  "renders named actions in %s and restores speech presentation after an edit",
+  (layout) => {
+    const authorId = "a".repeat(64);
+    const action = { ...row, authorId, content: "/me eats a drumstick" };
+    const open = vi.fn(() => true);
+    const props = {
+      row: action,
+      profile: { name: "Alex *literal*" },
+      viewer: authorId,
+      layout,
+      stackPrevious: true,
+      stackNext: true,
+      media: () => undefined,
+      onOpenLink: open,
+      canOpenLink: () => true,
+      day: false,
+      retry: undefined,
+    };
+    try {
+      const view = renderDom(<MessageRow {...props} />);
+      expect(view.container).toHaveTextContent(
+        "Alex *literal* eats a drumstick",
+      );
+      expect(
+        screen.queryByText("/me eats a drumstick"),
+      ).not.toBeInTheDocument();
+      const profile = screen.getByRole("button", {
+        name: "View Alex *literal* profile",
+      });
+      fireEvent.click(profile);
+      expect(open).toHaveBeenCalled();
+      expect(messageCopyText(action, new Map(), [])).toBe(
+        "/me eats a drumstick",
+      );
+
+      view.rerender(
+        <MessageRow
+          {...props}
+          row={{ ...action, content: "Back to work", edited: true }}
+        />,
+      );
+      expect(screen.getByText("Back to work")).toBeVisible();
+      view.rerender(
+        <MessageRow
+          {...props}
+          row={{
+            ...action,
+            content: "/me waves at [the docs](https://example.org)",
+            edited: true,
+          }}
+        />,
+      );
+      expect(screen.getByRole("link", { name: "the docs" })).toHaveAttribute(
+        "href",
+        "https://example.org/",
+      );
+      expect(screen.getByText("(edited)")).toBeVisible();
+    } finally {
+      cleanup();
+    }
+  },
+);
+
 it("discloses an automatic failure reply while keeping its original text available", () => {
   const content =
     "Sorry, I couldn’t complete this request. Please try again in a new thread, or try a different model.";
