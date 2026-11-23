@@ -101,6 +101,61 @@ export function createDirectMessages(
       );
     return channel.members ?? [];
   }
+  /** Where an add whose answer never came landed, as the signed roster now
+   * shows it: this DM holding `pubkeys`, or a DM the viewer was not in
+   * before holding its people and them. Undefined when the roster shows no
+   * such change, so the add did not land and may be sent again. `before` is
+   * the channel list from before the add. */
+  async function landed(
+    channelId: string,
+    pubkeys: readonly string[],
+    before: readonly { id: string; members?: readonly string[] }[],
+    signal: AbortSignal,
+  ) {
+    if (!transport) return undefined;
+    const source = before.find((channel) => channel.id === channelId)?.members;
+    if (!source || pubkeys.every((key) => source.includes(key)))
+      return undefined;
+    const known = new Set(before.map((channel) => channel.id));
+    const snapshot = profiles?.snapshot();
+    const required = [
+      transport.viewer,
+      ...source.filter((key) => !snapshot?.get(key)?.isAgent),
+      ...pubkeys,
+    ];
+    const rosters = await reader.read(
+      [
+        { "#d": [channelId] },
+        // Whichever DM it landed in holds the first of them.
+        { "#p": [pubkeys[0] as string] },
+      ].map((filter) => ({
+        ...filter,
+        kinds: [39002],
+        consistency: "strong" as const,
+        authors: [transport.relayAuthor],
+        limit: 100,
+      })),
+      { signal, fresh: true },
+    );
+    signal.throwIfAborted();
+    const ids = new Set(
+      rosters.flatMap((event) => {
+        const id = event.tags.find(([name]) => name === "d")?.[1];
+        if (event.pubkey !== transport.relayAuthor || !id) return [];
+        const members = event.tags.flatMap(([name, key]) =>
+          name === "p" && key ? [key] : [],
+        );
+        return (
+          id === channelId
+            ? pubkeys.every((key) => members.includes(key))
+            : !known.has(id) && required.every((key) => members.includes(key))
+        )
+          ? [id]
+          : [];
+      }),
+    );
+    return ids.size === 1 ? [...ids][0] : undefined;
+  }
   return Object.freeze({
     available,
     /** Observe relay-confirmed opens; opening also unhides the DM on the relay. */
@@ -253,7 +308,8 @@ export function createDirectMessages(
      * `pubkeys`, its agents left behind; or an existing DM of the grown set
      * of people. With `"ask"`, the relay decides, and throws
      * `NeedsHistoryChoice` when people would join this DM: the adder chooses,
-     * then adds again with their choice. */
+     * then adds again with their choice. When the relay's answer is lost, the
+     * signed roster says whether the add landed before it fails. */
     async add(
       channelId: string,
       pubkeys: readonly string[],
@@ -266,12 +322,20 @@ export function createDirectMessages(
         throw new Error("Choose who to add to this DM.");
       const active = AbortSignal.any([lifetime, signal]);
       active.throwIfAborted();
+      const before = channels.list().channels;
       const id = await transport
         .openDirectMessage(pubkeys, active, { channelId, includeHistory })
         .catch(async (error: unknown) => {
-          throw error instanceof Error && error.message === NEEDS_HISTORY_CHOICE
-            ? new NeedsHistoryChoice()
-            : await refused(error, true, active);
+          if (error instanceof Error && error.message === NEEDS_HISTORY_CHOICE)
+            throw new NeedsHistoryChoice();
+          // The relay may have added them and its answer been lost: before
+          // they can add again, the roster says whether it landed.
+          const id = await landed(channelId, pubkeys, before, active).catch(
+            () => undefined,
+          );
+          if (id) return id;
+          active.throwIfAborted();
+          throw await refused(error, true, active);
         });
       active.throwIfAborted();
       await confirmed(id, [transport.viewer, ...pubkeys], active);
