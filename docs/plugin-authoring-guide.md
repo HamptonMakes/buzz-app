@@ -86,6 +86,13 @@ entry has a unique `id`, a `label`, and an `onSelect` callback.
 heading. With `placement: "team-row"`, the channel group uses the native
 Team menu and ignores these entries.
 
+Check `ctx.conversation.workspaceSlots?.trailing === true` before passing
+`trailing` to `ui.Workspace`. The host shows that content as a card over the
+bottom of the channel timeline, in its own scroll layer: scrolling over the
+card grows it, then slides it up. Keep its controls in view with
+`position: sticky; bottom: 0` and an opaque background, and draw its outline
+with a box shadow rather than a bottom border.
+
 For `ctx.agents.ui.Transcript`, give each turn a unique `turnId` that stays the same across reads. Return a new turn when it changes. Leave previously returned turns and their items untouched.
 
 ## Migration writes

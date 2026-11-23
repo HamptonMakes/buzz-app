@@ -197,3 +197,289 @@ test.describe("thread workspace", () => {
     expect(await gap(region)).toBeGreaterThan(200);
   });
 });
+
+test.describe("trailing card", () => {
+  const card = (page) => page.getByRole("article", { name: "Fixture card" });
+  // The card scrolls in its own sheet over the history.
+  const sheet = (page) => card(page).locator("xpath=../..");
+  const toggle = (page) => card(page).getByRole("button", { name: /brief/ });
+  // The history, the sheet and the card, in viewport pixels.
+  const place = (page) =>
+    page.evaluate(() => {
+      const card = document.querySelector('[aria-label="Fixture card"]');
+      const sheet = card.parentElement.parentElement;
+      const feed = document.querySelector("[data-message-scroller]");
+      const rows = feed.querySelectorAll("[data-message-id]");
+      const bounds = sheet.getBoundingClientRect();
+      // The host's card box: the fixture's own margin is inside it.
+      const box = card.parentElement.getBoundingClientRect();
+      const style = getComputedStyle(feed);
+      const left = feed.getBoundingClientRect().left + feed.clientLeft;
+      const inner =
+        feed.clientWidth -
+        Number.parseFloat(style.paddingLeft) -
+        Number.parseFloat(style.paddingRight);
+      return {
+        feedTop: feed.scrollTop,
+        sheetTop: sheet.scrollTop,
+        sheetMax: sheet.scrollHeight - sheet.clientHeight,
+        spacer: sheet.firstElementChild.getBoundingClientRect().height,
+        // The top of the card's box, where the spacer above it ends, below
+        // the sheet's top.
+        cardTop:
+          sheet.firstElementChild.getBoundingClientRect().bottom - bounds.top,
+        sheetBottom: bounds.bottom,
+        footerBottom: card.querySelector("footer").getBoundingClientRect()
+          .bottom,
+        latestBottom: rows[rows.length - 1].getBoundingClientRect().bottom,
+        cardScreenTop: box.top,
+        // The card shares the history's measure and centre.
+        offCentre:
+          (box.left + box.right) / 2 -
+          (left + Number.parseFloat(style.paddingLeft) + inner / 2),
+      };
+    });
+  // Where Full brief grows the card to: 60px below the view's top.
+  const full = (at) => Math.min(Math.max(0, at.spacer - 60), at.sheetMax);
+  async function overCard(page, y = 30) {
+    await card(page).hover({ position: { x: 60, y } });
+  }
+  // At Rest; at the latest message, unless `reading` earlier history.
+  async function expectRest(page, region, reading = false) {
+    await settle(page, sheet(page));
+    await settle(page, region);
+    const at = await place(page);
+    expect(at.sheetTop).toBe(0);
+    if (!reading) {
+      expect(await gap(region)).toBeLessThan(2);
+      expect(at.latestBottom).toBeLessThanOrEqual(at.cardScreenTop + 1);
+    }
+    await expect(toggle(page)).toHaveText("Full brief");
+    return at;
+  }
+
+  test("a wheel over the card grows it, then slides it up, and the history stays", async ({
+    page,
+    app,
+  }) => {
+    await open(page, app);
+    const region = history(page);
+    await select(page, { channelId: "alpha", trailing: "long" });
+    await expect(toggle(page)).toHaveText("Full brief");
+    const rest = await expectRest(page, region);
+    expect(Math.abs(rest.offCentre)).toBeLessThanOrEqual(1);
+    // Its controls sit at the history's bottom edge.
+    expect(Math.abs(rest.footerBottom - rest.sheetBottom)).toBeLessThanOrEqual(
+      1,
+    );
+
+    await overCard(page);
+    await wheel(page, 150, sheet(page));
+    const grown = await place(page);
+    expect(grown.sheetTop).toBeGreaterThan(50);
+    expect(grown.sheetTop).toBeLessThan(grown.spacer);
+    expect(grown.feedTop).toBe(rest.feedTop);
+    expect(grown.footerBottom).toBe(rest.footerBottom);
+    await expect(toggle(page)).toHaveText("Hide brief");
+
+    // Above a growing card, the history scrolls and the card stays.
+    const { x } = await card(page).boundingBox();
+    await page.mouse.move(x + 60, grown.cardScreenTop - 40, { steps: 4 });
+    await wheel(page, -300, region);
+    const read = await place(page);
+    expect(read.feedTop).toBeLessThan(rest.feedTop);
+    expect(read.sheetTop).toBe(grown.sheetTop);
+
+    // Past Full, the card slides up off the view's top.
+    await overCard(page);
+    await wheel(page, 3000, sheet(page));
+    const slid = await place(page);
+    expect(slid.cardTop).toBeLessThan(0);
+    expect(slid.feedTop).toBe(read.feedTop);
+
+    // Back down, the wheel stops at Rest and leaves the history.
+    await overCard(page, 200);
+    await wheel(page, -6000, sheet(page));
+    const back = await expectRest(page, region, true);
+    expect(back.feedTop).toBe(read.feedTop);
+
+    // At Full, a new message shows Jump to latest in the gap above the card.
+    // It returns the card to Rest below the message.
+    await toggle(page).press("Enter");
+    await expect(toggle(page)).toHaveText("Hide brief");
+    await settle(page, sheet(page));
+    app.append(
+      "primary",
+      "alpha",
+      "Arrived while reading the card",
+      true,
+      false,
+    );
+    const pill = region.getByRole("button", { name: "1 new message" });
+    await expect(pill).toBeInViewport();
+    const gapTop = (await place(page)).cardScreenTop - 60;
+    expect((await pill.boundingBox()).y).toBeGreaterThanOrEqual(gapTop);
+    // Moving off the card, over the sheet's empty top, lets go of the sheet.
+    const at = await pill.boundingBox();
+    await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2, {
+      steps: 4,
+    });
+    await pill.click();
+    await expect(
+      region.getByText("Arrived while reading the card"),
+    ).toBeInViewport();
+    await expectRest(page, region);
+  });
+
+  for (const brief of ["long", "short"])
+    test(`Full brief grows the ${brief} card ${brief === "long" ? "to 60px below the top" : "to its end"}, and Hide brief returns`, async ({
+      page,
+      app,
+    }) => {
+      await open(page, app);
+      const region = history(page);
+      await select(page, { channelId: "alpha", trailing: brief });
+      await expect(toggle(page)).toHaveText("Full brief");
+      const rest = await expectRest(page, region);
+
+      await toggle(page).press("Enter");
+      await expect(toggle(page)).toHaveText("Hide brief");
+      await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
+      await settle(page, sheet(page));
+      const shown = await place(page);
+      expect(Math.abs(shown.sheetTop - full(shown))).toBeLessThanOrEqual(1);
+      if (brief === "long")
+        expect(Math.abs(shown.cardTop - 60)).toBeLessThanOrEqual(1);
+      else expect(shown.cardTop).toBeGreaterThan(60);
+      expect(shown.feedTop).toBe(rest.feedTop);
+      expect(shown.footerBottom).toBe(rest.footerBottom);
+
+      await toggle(page).press("Enter");
+      await expectRest(page, region);
+    });
+
+  test("Full brief re-aims when the view shrinks during its scroll", async ({
+    page,
+    app,
+  }) => {
+    await open(page, app);
+    const region = history(page);
+    await select(page, { channelId: "alpha", trailing: "long" });
+    await expect(toggle(page)).toHaveText("Full brief");
+    const rest = await expectRest(page, region);
+    // In the click's task, before its smooth scroll can arrive, the composer
+    // grows, as its context row does when the card's draft lands.
+    await page.evaluate(() => {
+      document
+        .querySelector('[aria-label="Fixture card"] button[aria-expanded]')
+        .click();
+      document.querySelector('[role="textbox"]').style.minHeight = "160px";
+    });
+    await expect(toggle(page)).toHaveText("Hide brief");
+    await settle(page, sheet(page));
+    const shown = await place(page);
+    expect(shown.spacer).toBeLessThan(rest.spacer - 50);
+    expect(Math.abs(shown.cardTop - 60)).toBeLessThanOrEqual(1);
+  });
+
+  test("Full brief jumps without animation under reduced motion", async ({
+    page,
+    app,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await open(page, app);
+    const region = history(page);
+    await select(page, { channelId: "alpha", trailing: "long" });
+    await expect(toggle(page)).toHaveText("Full brief");
+    await expectRest(page, region);
+    // Read in the click's task: an instant scroll has landed.
+    const landed = await page.evaluate(() => {
+      const card = document.querySelector('[aria-label="Fixture card"]');
+      card.querySelector("button[aria-expanded]").click();
+      return (
+        card.parentElement.previousElementSibling.getBoundingClientRect()
+          .bottom - card.parentElement.parentElement.getBoundingClientRect().top
+      );
+    });
+    expect(Math.abs(landed - 60)).toBeLessThanOrEqual(1);
+  });
+
+  test("removing a grown card leaves no expanded state behind", async ({
+    page,
+    app,
+  }) => {
+    await open(page, app);
+    const region = history(page);
+    await select(page, { channelId: "alpha", trailing: "long" });
+    await expect(toggle(page)).toHaveText("Full brief");
+    await expectRest(page, region);
+    await overCard(page);
+    await wheel(page, 300, sheet(page));
+    await expect(toggle(page)).toHaveText("Hide brief");
+
+    await card(page).getByRole("button", { name: "Approve" }).click();
+    await expect(card(page)).toHaveCount(0);
+    expect(
+      await region.evaluate((element) =>
+        element.style.getPropertyValue("--timeline-trailing-rest"),
+      ),
+    ).toBe("");
+    await settle(page, region);
+    await readEarlier(page, region);
+    await expect(
+      region.getByRole("button", { name: "Jump to latest", exact: true }),
+    ).toBeInViewport();
+  });
+
+  test.describe(() => {
+    // Without thread fixtures, the latest row is a top-level message.
+    test.use({ threadUnread: false });
+
+    test("a reveal of the latest message lands above the card", async ({
+      page,
+      app,
+    }) => {
+      await open(page, app);
+      const region = history(page);
+      await select(page, { channelId: "alpha", trailing: "long" });
+      await expect(toggle(page)).toHaveText("Full brief");
+      await expectRest(page, region);
+      const messageId = await region.evaluate(
+        (element) =>
+          [...element.querySelectorAll("[data-message-id]")].at(-1).dataset
+            .messageId,
+      );
+      await readEarlier(page, region);
+
+      await select(page, { channelId: "alpha", trailing: "long", messageId });
+      await expect(
+        region.locator(`[data-message-id="${messageId}"]`),
+      ).toBeInViewport();
+      await expectRest(page, region);
+    });
+  });
+
+  test.describe(() => {
+    test.use({ productionBroker: true });
+
+    test("a send returns a grown card to Rest below the sent message", async ({
+      page,
+      app,
+    }) => {
+      await open(page, app);
+      const region = history(page);
+      await select(page, { channelId: "alpha", trailing: "long" });
+      await expect(toggle(page)).toHaveText("Full brief");
+      await expectRest(page, region);
+      await overCard(page);
+      await wheel(page, 3000, sheet(page));
+      await expect(toggle(page)).toHaveText("Hide brief");
+
+      const input = page.getByRole("textbox", { name: "Message #Alpha" });
+      await input.fill("Sent below the card");
+      await input.press("Enter");
+      await expect(region.getByText("Sent below the card")).toBeInViewport();
+      await expectRest(page, region);
+    });
+  });
+});
