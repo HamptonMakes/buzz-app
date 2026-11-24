@@ -4142,6 +4142,7 @@ it("lets message plugins open targets through the row's link handler", async () 
   });
   const action = contribution("Open work", {
     matches: () => true,
+    marker: () => <span>Saved marker</span>,
     component: ({
       open,
       canOpen,
@@ -4192,7 +4193,7 @@ it("lets message plugins open targets through the row's link handler", async () 
   const open = vi.fn(() => true);
   const rowProps = {
     session,
-    profile: undefined,
+    profile: { name: "Alex" },
     media: () => undefined,
     onOpenLink: open,
     canOpenLink: (target: string) => target.startsWith("panel:"),
@@ -4203,11 +4204,20 @@ it("lets message plugins open targets through the row's link handler", async () 
     renderDom(
       <MessageRow
         {...rowProps}
-        row={{ ...row, id: "reply", threadRootId: "root", replyCount: 0 }}
+        row={{
+          ...row,
+          content: "/me Root",
+          id: "reply",
+          threadRootId: "root",
+          replyCount: 0,
+        }}
         extensions={extensions}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Body Root" }));
+    expect(screen.getByText("Alex")).toBeVisible();
+    expect(screen.getByText("Saved marker")).toBeVisible();
+    expect(serializeNode(document.body, "text").match(/Alex/g)).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Body /me Root" }));
     expect(open).toHaveBeenLastCalledWith("panel:body", { rootId: "root" });
     // The whole-body renderer hides inline text; remove it to reach inline.
     messages = [];
@@ -4217,6 +4227,8 @@ it("lets message plugins open targets through the row's link handler", async () 
     open.mockClear();
     expect(retainedOpen?.("panel:body")).toBe(false);
     expect(open).not.toHaveBeenCalled();
+    expect(screen.getByText("Alex")).toBeVisible();
+    expect(screen.getByText("Saved marker")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Inline Root" }));
     expect(open).toHaveBeenLastCalledWith("panel:inline", { rootId: "root" });
     fireEvent.click(

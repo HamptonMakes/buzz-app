@@ -315,6 +315,7 @@ function MessageRowContent({
   agentPubkeys,
 }: MessageContentProps) {
   const [avatarFocused, setAvatarFocused] = useState(false);
+  const messageRenderer = useMessageRenderer(extensions?.messages, row);
   // Compact is a flat list: everyone's rows start at the left, with no own surface.
   const action =
     !row.membership &&
@@ -322,6 +323,7 @@ function MessageRowContent({
     !row.diff &&
     !row.forward &&
     !row.workflowOwnerId &&
+    !messageRenderer &&
     bodyContent == null
       ? messageAction(row.content)
       : undefined;
@@ -733,7 +735,6 @@ function MessageRowContent({
   // while its card is mounted, and they return to the host list while its
   // fallback shows. A remounted card starts healthy and claims again.
   const bodyShown = !attachmentOnly;
-  const messageRenderer = useMessageRenderer(extensions?.messages, row);
   const [failedRenderer, setFailedRenderer] = useState<MessageRenderer>();
   const claims =
     bodyShown && messageRenderer !== failedRenderer
