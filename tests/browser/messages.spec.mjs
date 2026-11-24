@@ -170,6 +170,7 @@ test("sending /me preserves the authored event and renders an action in its thre
       expect(attribution[0]).not.toContain("Alex Morgan");
       expect(attribution[1]).toContain("Alex Morgan");
       const clock = await action.locator("time [aria-hidden]").textContent();
+      await page.clock.setFixedTime(new Date("2026-11-24T18:42:11Z"));
       await draft.fill("/me hides the cover sheet");
       await draft.press("Enter");
       const nextAction = thread
