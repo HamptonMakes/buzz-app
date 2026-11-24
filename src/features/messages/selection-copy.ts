@@ -115,13 +115,23 @@ function serialize(
       ? `${bylineOpen}<strong>${escapeHtml(author)}</strong>${escapeHtml(time)}</p>`
       : author + time;
   }
-  // A compact clock keeps the ordinary full date/time in whole-row copies.
+  // A standalone clock keeps the ordinary full date/time in whole-row copies.
   // Selecting only part of its visible text still copies that fragment.
   const timestamp = node.getAttribute("data-copy-time");
-  if (timestamp !== null && whole(node, range)) {
+  if (
+    author === null &&
+    timestamp !== null &&
+    (includeHiddenBylines || selectable) &&
+    whole(node, range)
+  ) {
     const seconds = Number.parseFloat(timestamp);
-    if (Number.isFinite(seconds))
-      return text(formatItemTimestamp(seconds, { withTime: true }), format);
+    if (Number.isFinite(seconds)) {
+      const clock = text(
+        formatItemTimestamp(seconds, { withTime: true }),
+        format,
+      );
+      return format === "html" ? `<p>${clock}</p>` : clock;
+    }
   }
   // Unselectable chrome that still carries context, such as reaction counts,
   // states its copy text.

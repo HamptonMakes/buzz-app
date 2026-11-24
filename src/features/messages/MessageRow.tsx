@@ -1696,7 +1696,7 @@ function MessageRowContent({
                 <div
                   className={
                     !showTime || repeatedActionTime
-                      ? "sr-only"
+                      ? "sr-only select-none"
                       : styles.actionTime
                   }
                   data-copy-time={showTime ? row.createdAt : undefined}
