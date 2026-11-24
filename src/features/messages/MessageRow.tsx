@@ -199,7 +199,7 @@ export type MessageRowProps = {
   stackPrevious?: boolean;
   stackNext?: boolean;
   /** Adjacent visible message in the same conversation branch. */
-  previousMessage?: ChannelMessage;
+  previousMessage?: ChannelMessage | undefined;
   alignViewer?: boolean;
 
   mediaMode?: "inline" | "thread";

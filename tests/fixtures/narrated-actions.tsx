@@ -45,7 +45,7 @@ const action = message(
   viewer,
   channelId,
   "/me hands over a resignation letter",
-  now - 120,
+  Math.floor((now - 120) / 60) * 60,
 );
 const events = [
   metadata(relay, channelId, "watercooler"),
@@ -53,8 +53,13 @@ const events = [
   profile(viewer, { name: viewerName }),
   profile(boss, { name: "Dana Brooks" }),
   message(boss, channelId, "TPS report. New cover sheet. Please.", now - 180),
-  message(viewer, channelId, "On it.", now - 150),
   action,
+  message(
+    viewer,
+    channelId,
+    "/me reaches for the stapler",
+    action.created_at + 1,
+  ),
   message(boss, channelId, "Needs a cover sheet.", now - 60),
   message(boss, channelId, "/me schedules a follow-up", now - 15, [
     ["e", action.id, "", "reply"],
