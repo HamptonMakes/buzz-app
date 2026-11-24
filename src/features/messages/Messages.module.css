@@ -4608,6 +4608,9 @@ html[data-keyboard-navigation]
 }
 
 /* Narration stays on the conversation surface in either density/theme. */
+.message[data-action-continuation] {
+  padding-block-start: 0;
+}
 .message[data-narrated-action] > .messageBody {
   max-width: none;
 }

@@ -1645,6 +1645,7 @@ function MessageRowContent({
         data-thread-open={threadOpen || undefined}
         data-layout={layout}
         data-narrated-action={action ? "" : undefined}
+        data-action-continuation={repeatedActionTime ? "" : undefined}
         data-copy-block={action ? "" : undefined}
         data-full-width={fullWidth || undefined}
         data-stack-previous={stackPrevious || undefined}
