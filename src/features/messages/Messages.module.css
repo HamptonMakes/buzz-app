@@ -4608,6 +4608,13 @@ html[data-keyboard-navigation]
 }
 
 /* Narration stays on the conversation surface in either density/theme. */
+.message[data-narrated-action] {
+  --action-first-line-height: max(
+    var(--size-control-sm),
+    var(--text-message) *
+    var(--text-message--line-height)
+  );
+}
 .message[data-action-continuation] {
   padding-block-start: 0;
 }
@@ -4615,17 +4622,7 @@ html[data-keyboard-navigation]
   max-width: none;
 }
 .message[data-narrated-action] .messageAvatar {
-  top: calc(
-    max(
-      0px,
-      (
-        var(--text-message) *
-        var(--text-message--line-height) -
-        var(--size-control-sm)
-      ) /
-      2
-    )
-  );
+  top: calc((var(--action-first-line-height) - var(--size-control-sm)) / 2);
   bottom: auto;
   /* The small image shares the full avatar's leading edge inside its control. */
   translate: calc(-1 * var(--space-1)) 0;
@@ -4635,15 +4632,12 @@ html[data-keyboard-navigation]
   min-width: 0;
   min-height: var(--size-control-sm);
   padding-block-start: calc(
-    max(
-      0px,
-      (
-        var(--size-control-sm) -
-        var(--text-message) *
-        var(--text-message--line-height)
-      ) /
-      2
-    )
+    (
+      var(--action-first-line-height) -
+      var(--text-message) *
+      var(--text-message--line-height)
+    ) /
+    2
   );
   color: var(--text-standard);
   overflow-wrap: anywhere;
