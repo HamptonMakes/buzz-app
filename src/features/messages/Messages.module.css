@@ -4618,6 +4618,9 @@ html[data-keyboard-navigation]
 .message[data-action-continuation] {
   padding-block-start: 0;
 }
+.message[data-action-continuation] > .messageBody {
+  margin-block-start: calc(-1 * var(--space-half));
+}
 .message[data-narrated-action] > .messageBody {
   max-width: none;
 }
