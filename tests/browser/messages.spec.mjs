@@ -84,6 +84,7 @@ function containedWithin(inner, outer) {
 test("sending /me preserves the authored event and renders an action in its thread", async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date("2026-11-24T18:42:10Z"));
   await withMessagesFixture(
     page,
     async () => {
@@ -125,6 +126,59 @@ test("sending /me preserves the authored event and renders an action in its thre
       await expect(
         thread.getByRole("button", { name: "Try again", exact: true }),
       ).toHaveCount(0);
+      // Quote two narrated replies through the real selection menu and editor.
+      const earlier = thread
+        .locator("[data-message-id]")
+        .filter({ hasText: "schedules a follow-up" });
+      await draft.blur();
+      await earlier.scrollIntoViewIfNeeded();
+      await action.scrollIntoViewIfNeeded();
+      const ids = [
+        await earlier.getAttribute("data-message-id"),
+        await action.getAttribute("data-message-id"),
+      ];
+      await thread.evaluate((element, [firstId, lastId]) => {
+        const first = element.querySelector(`[data-message-id="${firstId}"]`);
+        const last = element.querySelector(`[data-message-id="${lastId}"]`);
+        const range = document.createRange();
+        const start = first.querySelector("time").firstChild;
+        const walker = document.createTreeWalker(last, NodeFilter.SHOW_TEXT);
+        let end = walker.nextNode();
+        while (end && end.textContent !== "eats a drumstick") {
+          end = walker.nextNode();
+        }
+        range.setStart(start, 0);
+        range.setEnd(end, end.textContent.length);
+        const selection = getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }, ids);
+      await action
+        .getByText("eats a drumstick", { exact: true })
+        .click({ button: "right" });
+      await page
+        .getByRole("menuitem", { name: "Quote highlight", exact: true })
+        .click();
+      await expect(draft).toContainText("schedules a follow-up");
+      await expect(draft).toContainText("eats a drumstick");
+      const attribution = await draft
+        .locator("blockquote p")
+        .filter({ hasText: /Alex Morgan|Dana Brooks/ })
+        .allTextContents();
+      expect(attribution).toHaveLength(2);
+      expect(attribution[0]).toContain("Dana Brooks");
+      expect(attribution[0]).not.toContain("Alex Morgan");
+      expect(attribution[1]).toContain("Alex Morgan");
+      const clock = await action.locator("time [aria-hidden]").textContent();
+      await draft.fill("/me hides the cover sheet");
+      await draft.press("Enter");
+      const nextAction = thread
+        .locator("[data-message-id]")
+        .filter({ hasText: "hides the cover sheet" });
+      await expect(nextAction).toContainText(
+        "Alex Morgan hides the cover sheet",
+      );
+      await expect(nextAction.getByText(clock, { exact: true })).toHaveCount(0);
     },
     "",
     "narrated-actions",

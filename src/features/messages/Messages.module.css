@@ -4612,12 +4612,34 @@ html[data-keyboard-navigation]
   max-width: none;
 }
 .message[data-narrated-action] .messageAvatar {
-  top: 0;
+  top: calc(
+    max(
+      0px,
+      (
+        var(--text-message) *
+        var(--text-message--line-height) -
+        var(--size-control-sm)
+      ) /
+      2
+    )
+  );
   bottom: auto;
-  translate: none;
+  /* The small image shares the full avatar's leading edge inside its control. */
+  translate: calc(-1 * var(--space-1)) 0;
 }
 .actionPayload {
+  position: relative;
   min-width: 0;
+  min-height: var(--size-control-sm);
+  padding-block-start: max(
+    0px,
+    (
+      var(--size-control-sm) -
+      var(--text-message) *
+      var(--text-message--line-height)
+    ) /
+    2
+  );
   color: var(--text-standard);
   overflow-wrap: anywhere;
 }
@@ -4630,18 +4652,11 @@ html[data-keyboard-navigation]
   display: inline;
   margin: 0;
 }
-/* Time owns a stable leading column; the avatar occupies the following gap. */
-.message[data-narrated-action] {
-  gap: calc(var(--size-control-sm) + var(--space-3));
-}
 .actionTime {
   @apply text-caption;
-  flex: 0 0 calc(var(--space-8) * 2);
-  padding-block-start: var(--space-half);
-  text-align: end;
+  margin-block-end: var(--space-1);
   color: var(--text-subtle);
-  white-space: nowrap;
 }
-.actionText > strong {
+.message .actionText > strong {
   font-weight: var(--type-weight-normal);
 }

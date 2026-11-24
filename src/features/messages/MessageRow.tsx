@@ -50,7 +50,7 @@ import {
 import { useChannelIdentityNames } from "../identity-names/react";
 import { Button } from "../../shared/design-system/ui/Button";
 import { ReplySummary } from "./ReplySummary";
-import { messageAction, actionMessageContent } from "./message-action";
+import { narratedMessageAction, actionMessageContent } from "./message-action";
 import { usePresenceStatus } from "../presence/react";
 import { UserStatusDisplay } from "../user-status/StatusDisplay";
 import { useMessageDensity } from "../../shared/theme/message-density";
@@ -198,6 +198,8 @@ export type MessageRowProps = {
   viewer?: string | undefined;
   stackPrevious?: boolean;
   stackNext?: boolean;
+  /** Adjacent visible message in the same conversation branch. */
+  previousMessage?: ChannelMessage;
   alignViewer?: boolean;
 
   mediaMode?: "inline" | "thread";
@@ -301,6 +303,7 @@ function MessageRowContent({
   viewer = session?.viewer,
   stackPrevious = layout === "continuation",
   stackNext = false,
+  previousMessage,
   representedAgents,
   repliedAgents,
   stoppedRequest,
@@ -318,15 +321,21 @@ function MessageRowContent({
   const messageRenderer = useMessageRenderer(extensions?.messages, row);
   // Compact is a flat list: everyone's rows start at the left, with no own surface.
   const action =
-    !row.membership &&
-    !row.huddle &&
-    !row.diff &&
-    !row.forward &&
-    !row.workflowOwnerId &&
-    !messageRenderer &&
-    bodyContent == null
-      ? messageAction(row.content)
+    !messageRenderer && bodyContent == null
+      ? narratedMessageAction(row)
       : undefined;
+  const previousRenderer = useMessageRenderer(
+    action && previousMessage ? extensions?.messages : undefined,
+    previousMessage ?? row,
+  );
+  const repeatedActionTime =
+    action !== undefined &&
+    previousMessage !== undefined &&
+    !previousRenderer &&
+    narratedMessageAction(previousMessage) !== undefined &&
+    previousMessage.channelId === row.channelId &&
+    Math.floor(previousMessage.createdAt / 60) ===
+      Math.floor(row.createdAt / 60);
   const flat = useMessageDensity() === "compact" || action !== undefined;
   if (action !== undefined) {
     stackPrevious = false;
@@ -1636,6 +1645,7 @@ function MessageRowContent({
         data-thread-open={threadOpen || undefined}
         data-layout={layout}
         data-narrated-action={action ? "" : undefined}
+        data-copy-block={action ? "" : undefined}
         data-full-width={fullWidth || undefined}
         data-stack-previous={stackPrevious || undefined}
         data-stack-next={stackNext || undefined}
@@ -1649,17 +1659,7 @@ function MessageRowContent({
         }
         data-own={(!attachmentOnly && !row.huddle && ownBubble) || undefined}
       >
-        {!renderMessage && (
-          <span className={action ? styles.actionTime : styles.messageGutter}>
-            {action && (
-              <MessageTimestamp
-                createdAt={row.createdAt}
-                visible={showTime}
-                compact
-              />
-            )}
-          </span>
-        )}
+        {!renderMessage && <span className={styles.messageGutter} />}
 
         <div className={styles.messageBody}>
           {!renderMessage && overlays}
@@ -1673,6 +1673,7 @@ function MessageRowContent({
             {/* A live append must not remove the reader's current focus target. */}
             {/* Bubbles end a group with its avatar; a flat list starts with it. */}
             {!renderMessage &&
+              !action &&
               (!(flat ? stackPrevious : stackNext) || avatarFocused) && (
                 <div className={styles.messageAvatar}>{avatar}</div>
               )}
@@ -1690,6 +1691,21 @@ function MessageRowContent({
                 !row.huddle &&
                 !renderMessage &&
                 messageActions()}
+              {action && (
+                <div
+                  className={
+                    !showTime || repeatedActionTime
+                      ? "sr-only"
+                      : styles.actionTime
+                  }
+                  data-copy-time={showTime ? row.createdAt : undefined}
+                >
+                  <MessageTimestamp
+                    createdAt={row.createdAt}
+                    visible={showTime && !repeatedActionTime}
+                  />
+                </div>
+              )}
               {/* A selection holding the whole byline copies it as one line,
                 name then time (selection-copy.ts). A grouped row's byline is
                 otherwise screen-reader text that stays out of selections. */}
@@ -1799,6 +1815,9 @@ function MessageRowContent({
                   data-diff-only={!!row.diff || undefined}
                   data-own={ownBubble || undefined}
                 >
+                  {!renderMessage && action && (
+                    <div className={styles.messageAvatar}>{avatar}</div>
+                  )}
                   {timeReply && (
                     <div className={styles.mediaTimeLink} data-media-timecode>
                       {onMediaTime ? (

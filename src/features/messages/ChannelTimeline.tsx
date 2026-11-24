@@ -2497,6 +2497,13 @@ function Timeline({
             const renderMessage = (row: ChannelMessage, inside = false) => {
               return (
                 <MessageRow
+                  previousMessage={
+                    !inside &&
+                    previousRow &&
+                    !foldedActivity.has(previousRow.id)
+                      ? previousRow
+                      : undefined
+                  }
                   representedAgents={stableActivity.agents(
                     row.id,
                     presentation.representedAgents.get(row.id),

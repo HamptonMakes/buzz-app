@@ -54,7 +54,10 @@ import { MessageRow } from "./MessageRow";
 import { MessageContextMenus } from "./MessageActionBar";
 import { ReplySummary } from "./ReplySummary";
 import { setClockPreference } from "../../shared/clock-preference";
-import { formatFullTimestamp } from "../../shared/datetime";
+import {
+  formatFullTimestamp,
+  formatItemTimestamp,
+} from "../../shared/datetime";
 import { MessageManagement } from "./MessageManagement";
 import type { ChannelMessage, Profile } from "../relay/contracts";
 import type { AttachmentRendererProps } from "../conversation/contracts";
@@ -103,10 +106,31 @@ it.each(["timeline", "thread"] as const)(
       retry: undefined,
     };
     try {
-      const view = renderDom(<MessageRow {...props} />);
+      const view = renderDom(
+        <>
+          <MessageRow {...props} />
+          <MessageRow
+            {...props}
+            profile={{ name: "Dana" }}
+            previousMessage={action}
+            row={{
+              ...action,
+              id: "next-action",
+              authorId: "d".repeat(64),
+              createdAt: row.createdAt + 1,
+              content: "/me waves",
+            }}
+          />
+        </>,
+      );
       expect(view.container).toHaveTextContent(
         "Alex *literal* eats a drumstick",
       );
+      expect(
+        screen.getAllByText(
+          formatItemTimestamp(row.createdAt, { withTime: true }),
+        ),
+      ).toHaveLength(1);
       expect(
         screen.queryByText("/me eats a drumstick"),
       ).not.toBeInTheDocument();
@@ -118,9 +142,24 @@ it.each(["timeline", "thread"] as const)(
       expect(messageCopyText(action, new Map(), [])).toBe(
         "/me eats a drumstick",
       );
+      const clipboard = document.createElement("div");
+      clipboard.innerHTML = serializeNode(view.container, "html");
+      const copiedRows = [...clipboard.children].filter((element) =>
+        /Alex|Dana/.test(element.textContent ?? ""),
+      );
+      expect(copiedRows).toHaveLength(2);
+      expect(copiedRows[0]).toHaveTextContent("eats a drumstick");
+      expect(copiedRows[1]).toHaveTextContent("waves");
       for (const format of ["text", "markdown", "html"] as const) {
         const copied = serializeNode(view.container, format);
         expect(copied.match(/Alex/g)).toHaveLength(1);
+        expect(copied.match(/Dana/g)).toHaveLength(1);
+        expect(copied).toContain(
+          formatItemTimestamp(row.createdAt, { withTime: true }),
+        );
+        expect(copied).toContain(
+          formatItemTimestamp(row.createdAt + 1, { withTime: true }),
+        );
       }
 
       view.rerender(
