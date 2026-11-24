@@ -1232,9 +1232,7 @@ function MessageRowContent({
     );
   const presentedBody = action ? (
     <div className={styles.actionText}>
-      {authorLabel} {body}{" "}
-      <MessageTimestamp createdAt={row.createdAt} visible={showTime} />
-      {messageMarkers}
+      {authorLabel} {body} {messageMarkers}
     </div>
   ) : (
     body
@@ -1651,7 +1649,17 @@ function MessageRowContent({
         }
         data-own={(!attachmentOnly && !row.huddle && ownBubble) || undefined}
       >
-        {!renderMessage && <span className={styles.messageGutter} />}
+        {!renderMessage && (
+          <span className={action ? styles.actionTime : styles.messageGutter}>
+            {action && (
+              <MessageTimestamp
+                createdAt={row.createdAt}
+                visible={showTime}
+                compact
+              />
+            )}
+          </span>
+        )}
 
         <div className={styles.messageBody}>
           {!renderMessage && overlays}

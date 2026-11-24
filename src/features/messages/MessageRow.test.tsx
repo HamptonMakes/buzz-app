@@ -54,10 +54,7 @@ import { MessageRow } from "./MessageRow";
 import { MessageContextMenus } from "./MessageActionBar";
 import { ReplySummary } from "./ReplySummary";
 import { setClockPreference } from "../../shared/clock-preference";
-import {
-  formatFullTimestamp,
-  formatItemTimestamp,
-} from "../../shared/datetime";
+import { formatFullTimestamp } from "../../shared/datetime";
 import { MessageManagement } from "./MessageManagement";
 import type { ChannelMessage, Profile } from "../relay/contracts";
 import type { AttachmentRendererProps } from "../conversation/contracts";
@@ -124,9 +121,6 @@ it.each(["timeline", "thread"] as const)(
       for (const format of ["text", "markdown", "html"] as const) {
         const copied = serializeNode(view.container, format);
         expect(copied.match(/Alex/g)).toHaveLength(1);
-        expect(
-          copied.split(formatItemTimestamp(row.createdAt, { withTime: true })),
-        ).toHaveLength(2);
       }
 
       view.rerender(

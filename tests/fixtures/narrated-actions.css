@@ -30,8 +30,8 @@ body {
 .action-preview-panes {
   display: grid;
   min-width: 0;
-  height: 520px;
-  max-height: calc(100dvh - 190px);
+  height: 560px;
+  max-height: calc(100dvh - 160px);
   border: 1px solid var(--border-standard);
   border-radius: var(--radius-panel);
   overflow: hidden;

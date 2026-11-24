@@ -4630,10 +4630,18 @@ html[data-keyboard-navigation]
   display: inline;
   margin: 0;
 }
-.message .actionText > time {
+/* Time owns a stable leading column; the avatar occupies the following gap. */
+.message[data-narrated-action] {
+  gap: calc(var(--size-control-sm) + var(--space-3));
+}
+.actionTime {
   @apply text-caption;
-  margin-inline-start: var(--space-2);
+  flex: 0 0 calc(var(--space-8) * 2);
+  padding-block-start: var(--space-half);
+  text-align: end;
   color: var(--text-subtle);
-  font-style: normal;
   white-space: nowrap;
+}
+.actionText > strong {
+  font-weight: var(--type-weight-normal);
 }
