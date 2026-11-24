@@ -36,67 +36,29 @@ const plugins = createPluginManager(context, {
 const extensions = new ConversationService(context);
 const viewer = keypair(),
   boss = keypair(),
-  sam = keypair(),
-  priya = keypair(),
-  theo = keypair(),
   relay = keypair();
+const viewerName =
+  new URLSearchParams(location.search).get("name")?.trim() || "Alex Morgan";
 const channelId = "narrated-actions";
 const now = Math.floor(Date.now() / 1000);
 const action = message(
-  theo,
+  viewer,
   channelId,
-  "/me goes off to negotiate with the printer",
+  "/me hands over a resignation letter",
   now - 120,
 );
 const events = [
   metadata(relay, channelId, "watercooler"),
-  roster(relay, channelId, [
-    viewer.pubkey,
-    boss.pubkey,
-    sam.pubkey,
-    priya.pubkey,
-    theo.pubkey,
-  ]),
-  profile(viewer, { name: "Alex Morgan" }),
+  roster(relay, channelId, [viewer.pubkey, boss.pubkey]),
+  profile(viewer, { name: viewerName }),
   profile(boss, { name: "Dana Brooks" }),
-  profile(sam, { name: "Sam Rivera" }),
-  profile(priya, { name: "Priya Shah" }),
-  profile(theo, { name: "Theo Park" }),
-  message(
-    boss,
-    channelId,
-    "I need those TPS reports by 5. With the new cover sheet.",
-    now - 420,
-  ),
-  message(sam, channelId, "/me slowly lowers a sandwich", now - 360),
-  message(
-    priya,
-    channelId,
-    "FINAL.pdf, FINAL_v2.pdf, or FINAL_USE_THIS_ONE.pdf?",
-    now - 300,
-  ),
-  message(boss, channelId, "The new one. There was a memo.", now - 240),
-  message(
-    viewer,
-    channelId,
-    "/me prints a cover sheet for the cover sheet",
-    now - 180,
-  ),
+  message(boss, channelId, "TPS report. New cover sheet. Please.", now - 180),
+  message(viewer, channelId, "On it.", now - 150),
   action,
-  message(
-    sam,
-    channelId,
-    "/me slides a resignation letter across the table",
-    now - 60,
-  ),
-  message(boss, channelId, "Looks good. Just needs a cover sheet.", now - 30),
-  message(
-    priya,
-    channelId,
-    "/me offers the printer a corner office",
-    now - 15,
-    [["e", action.id, "", "reply"]],
-  ),
+  message(boss, channelId, "Needs a cover sheet.", now - 60),
+  message(boss, channelId, "/me schedules a follow-up", now - 15, [
+    ["e", action.id, "", "reply"],
+  ]),
 ];
 const report = { publications: [] as RelayEvent[] };
 let receive = (_events: readonly RelayEvent[]) => {};

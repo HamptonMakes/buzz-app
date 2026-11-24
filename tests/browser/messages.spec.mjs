@@ -89,9 +89,9 @@ test("sending /me preserves the authored event and renders an action in its thre
     async () => {
       const root = page
         .locator("[data-message-id]")
-        .filter({ hasText: "goes off to negotiate with the printer" });
+        .filter({ hasText: "hands over a resignation letter" });
       await root
-        .getByText("goes off to negotiate with the printer", { exact: true })
+        .getByText("hands over a resignation letter", { exact: true })
         .hover();
       await root.getByRole("button", { name: "Reply", exact: true }).click();
       const thread = page.getByRole("complementary", {
