@@ -23,6 +23,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { PREVIEW_REST_MS } from "../../shared/design-system/ui/hoverIntent";
 import { messageCopyText } from "./message-copy";
+import { serializeNode } from "./selection-copy";
 import {
   SPRING_LOAD_DELAY_MS,
   SPRING_LOAD_GRACE_MS,
@@ -53,7 +54,10 @@ import { MessageRow } from "./MessageRow";
 import { MessageContextMenus } from "./MessageActionBar";
 import { ReplySummary } from "./ReplySummary";
 import { setClockPreference } from "../../shared/clock-preference";
-import { formatFullTimestamp } from "../../shared/datetime";
+import {
+  formatFullTimestamp,
+  formatItemTimestamp,
+} from "../../shared/datetime";
 import { MessageManagement } from "./MessageManagement";
 import type { ChannelMessage, Profile } from "../relay/contracts";
 import type { AttachmentRendererProps } from "../conversation/contracts";
@@ -117,6 +121,13 @@ it.each(["timeline", "thread"] as const)(
       expect(messageCopyText(action, new Map(), [])).toBe(
         "/me eats a drumstick",
       );
+      for (const format of ["text", "markdown", "html"] as const) {
+        const copied = serializeNode(view.container, format);
+        expect(copied.match(/Alex/g)).toHaveLength(1);
+        expect(
+          copied.split(formatItemTimestamp(row.createdAt, { withTime: true })),
+        ).toHaveLength(2);
+      }
 
       view.rerender(
         <MessageRow
@@ -2780,7 +2791,7 @@ it("dismisses an unsubmitted report when its retained row is suspended", async (
   }
 });
 
-function renderWorkflowMessage(open = vi.fn(() => true)) {
+function renderWorkflowMessage(open = vi.fn(() => true), content = "Root") {
   const ownerId = "ab".repeat(32);
   renderMessage({
     row: {
@@ -2788,6 +2799,7 @@ function renderWorkflowMessage(open = vi.fn(() => true)) {
       authorId: ownerId,
       signerId: "cd".repeat(32),
       workflowOwnerId: ownerId,
+      content,
     },
     viewer: ownerId,
     profile: { name: "Wes" },
@@ -2805,7 +2817,10 @@ it("presents automation, links the owner and explains the message without keys",
   const open = vi.fn(() => true);
   const user = userEvent.setup();
   try {
-    const { ownerId, trigger } = renderWorkflowMessage(open);
+    const { ownerId, trigger } = renderWorkflowMessage(
+      open,
+      "/me prepares a report",
+    );
     // The automation label stays plain; only the owner opens a profile.
     expect(
       screen.getByText("Workflow").closest('button, [role="button"]'),
@@ -2950,7 +2965,7 @@ it("contains a broken plugin message action to its own contribution", () => {
   try {
     renderDom(
       <MessageRow
-        row={{ ...row, replyCount: 0 }}
+        row={{ ...row, content: "/me eats a drumstick", replyCount: 0 }}
         session={session}
         profile={undefined}
         media={() => undefined}
@@ -2964,14 +2979,14 @@ it("contains a broken plugin message action to its own contribution", () => {
         }}
       />,
     );
-    expect(screen.getByText("Root")).toBeInTheDocument();
-    expect(screen.getByText("healthy marker")).toBeInTheDocument();
+    expect(screen.getByText("eats a drumstick")).toBeInTheDocument();
+    expect(screen.getByText("healthy marker")).toBeVisible();
     expect(screen.queryByText("never")).toBeNull();
     // Disabling and re-enabling is a fresh installation with a fresh boundary.
     swap([healthy]);
     swap([entry("throwing-marker", () => <span>fixed marker</span>), healthy]);
     expect(screen.getByText("fixed marker")).toBeInTheDocument();
-    expect(screen.getByText("healthy marker")).toBeInTheDocument();
+    expect(screen.getByText("healthy marker")).toBeVisible();
   } finally {
     error.mockRestore();
     cleanup();

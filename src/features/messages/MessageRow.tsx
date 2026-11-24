@@ -321,6 +321,7 @@ function MessageRowContent({
     !row.huddle &&
     !row.diff &&
     !row.forward &&
+    !row.workflowOwnerId &&
     bodyContent == null
       ? messageAction(row.content)
       : undefined;
@@ -1215,10 +1216,24 @@ function MessageRowContent({
       )}
     </strong>
   );
+  const messageMarkers =
+    session &&
+    actions.map(
+      (contribution) =>
+        contribution.marker && (
+          <ContributionBoundary
+            key={contributionKey(contribution)}
+            fallback={null}
+          >
+            <contribution.marker message={row} session={session} />
+          </ContributionBoundary>
+        ),
+    );
   const presentedBody = action ? (
     <div className={styles.actionText}>
       {authorLabel} {body}{" "}
       <MessageTimestamp createdAt={row.createdAt} visible={showTime} />
+      {messageMarkers}
     </div>
   ) : (
     body
@@ -1669,83 +1684,69 @@ function MessageRowContent({
               {/* A selection holding the whole byline copies it as one line,
                 name then time (selection-copy.ts). A grouped row's byline is
                 otherwise screen-reader text that stays out of selections. */}
-              <div
-                hidden={!!action}
-                className={
-                  action
-                    ? undefined
-                    : stackPrevious
-                      ? "sr-only select-none"
-                      : styles.byline
-                }
-                data-copy-author={
-                  row.workflowOwnerId && workflowOwnerName ? "Workflow" : name
-                }
-                data-copy-time={showTime ? row.createdAt : undefined}
-              >
-                {row.workflowOwnerId && workflowOwnerName ? (
-                  <WorkflowByline
-                    ownerId={row.workflowOwnerId}
-                    ownerName={workflowOwnerName}
-                    canOpenLink={canOpenLink}
-                    onOpenLink={openLink}
-                  />
-                ) : (
-                  <span className={styles.authorWithStatus}>
-                    {authorLabel}
-                    {session && !stackPrevious && (
-                      <UserStatusDisplay
-                        session={session}
-                        userId={row.authorId}
-                        compact
-                        focusable={false}
-                      />
-                    )}
-                  </span>
-                )}
-                {agentAuthor && !stackPrevious && (
-                  <RemoteAgentHint
-                    session={session}
-                    viewer={viewer}
-                    pubkey={row.authorId}
-                  />
-                )}
-                {ownerLabel && (
-                  <span className={styles.authorOwner}>
-                    <span aria-hidden="true">· </span>
-                    {ownerLabel}
-                  </span>
-                )}
-                {!stackPrevious && (
-                  <MessageTimestamp
-                    createdAt={row.createdAt}
-                    visible={showTime}
-                  />
-                )}
-                {!stackPrevious && canViewTranscript && taskCompleted && (
-                  <span className="text-caption">
-                    <button
-                      type="button"
-                      className={referenceStyles.link}
-                      onClick={() => openActivity(transcriptView)}
-                    >
-                      View activity
-                    </button>
-                  </span>
-                )}
-                {session &&
-                  actions.map(
-                    (action) =>
-                      action.marker && (
-                        <ContributionBoundary
-                          key={contributionKey(action)}
-                          fallback={null}
-                        >
-                          <action.marker message={row} session={session} />
-                        </ContributionBoundary>
-                      ),
+              {!action && (
+                <div
+                  className={
+                    stackPrevious ? "sr-only select-none" : styles.byline
+                  }
+                  data-copy-author={
+                    row.workflowOwnerId && workflowOwnerName ? "Workflow" : name
+                  }
+                  data-copy-time={showTime ? row.createdAt : undefined}
+                >
+                  {row.workflowOwnerId && workflowOwnerName ? (
+                    <WorkflowByline
+                      ownerId={row.workflowOwnerId}
+                      ownerName={workflowOwnerName}
+                      canOpenLink={canOpenLink}
+                      onOpenLink={openLink}
+                    />
+                  ) : (
+                    <span className={styles.authorWithStatus}>
+                      {authorLabel}
+                      {session && !stackPrevious && (
+                        <UserStatusDisplay
+                          session={session}
+                          userId={row.authorId}
+                          compact
+                          focusable={false}
+                        />
+                      )}
+                    </span>
                   )}
-              </div>
+                  {agentAuthor && !stackPrevious && (
+                    <RemoteAgentHint
+                      session={session}
+                      viewer={viewer}
+                      pubkey={row.authorId}
+                    />
+                  )}
+                  {ownerLabel && (
+                    <span className={styles.authorOwner}>
+                      <span aria-hidden="true">· </span>
+                      {ownerLabel}
+                    </span>
+                  )}
+                  {!stackPrevious && (
+                    <MessageTimestamp
+                      createdAt={row.createdAt}
+                      visible={showTime}
+                    />
+                  )}
+                  {!stackPrevious && canViewTranscript && taskCompleted && (
+                    <span className="text-caption">
+                      <button
+                        type="button"
+                        className={referenceStyles.link}
+                        onClick={() => openActivity(transcriptView)}
+                      >
+                        View activity
+                      </button>
+                    </span>
+                  )}
+                  {messageMarkers}
+                </div>
+              )}
             </div>
             {session?.relayAuthor && !row.membership && !row.huddle && (
               <PinnedMarker session={session} row={row} />
